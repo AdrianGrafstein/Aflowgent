@@ -227,6 +227,8 @@ em.acc{font-style:italic;color:var(--running)}
 .tier-price{font-family:var(--display);font-size:42px;font-weight:700;letter-spacing:-.02em;margin:20px 0 4px}
 .tier-price-sm{font-size:28px}
 .tier-price small{font-family:var(--body);font-size:13px;font-weight:500;color:var(--muted-2)}
+.tier-was{font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:-.02em;color:var(--muted-2);text-decoration:line-through;text-decoration-thickness:2px;margin-right:12px;vertical-align:middle}
+.tier-save{display:inline-block;margin-top:6px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--done)}
 .tier-for{color:var(--muted);font-size:15px}
 .tier ul{list-style:none;margin:24px 0 28px;padding:0;font-size:14.5px;color:var(--muted)}
 .tier li{padding:10px 0;border-top:1px solid var(--line);display:flex;gap:11px}
@@ -553,7 +555,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
       <div class="tier rv-turn">
         <h3>Basic</h3>
         <p class="tier-for">Your first intelligent system, built and run.</p>
-        <div class="tier-price">$999<small>/mo</small></div>
+        <div class="tier-price"><span class="tier-was">$1,499</span>$999<small>/mo</small></div>
+        <span class="tier-save">Launch offer</span>
         <ul>
           <li>One live automation or agent</li>
           <li>Monitoring, upkeep, and fixes</li>
@@ -567,7 +570,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
         <span class="tier-badge">Best value</span>
         <h3>Standard</h3>
         <p class="tier-for">For teams ready to automate across the business.</p>
-        <div class="tier-price">$2,499<small>/mo</small></div>
+        <div class="tier-price"><span class="tier-was">$3,499</span>$2,799<small>/mo</small></div>
+        <span class="tier-save">Launch offer</span>
         <ul>
           <li>Up to four live systems</li>
           <li>A new build every month</li>
