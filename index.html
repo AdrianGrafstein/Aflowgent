@@ -309,6 +309,39 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
   html{scroll-behavior:auto}
   #bg{display:none}
 }
+
+/* ---------- hero CRM dashboard ---------- */
+.dash{padding:20px 20px 14px;min-height:clamp(320px,42vw,440px);display:flex;flex-direction:column;gap:14px}
+.dash-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dash-eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2)}
+.dash-rev{font-family:var(--display);font-weight:700;font-size:clamp(32px,4.6vw,48px);letter-spacing:-.02em;line-height:1.05;margin-top:8px;display:flex;align-items:baseline;color:var(--text)}
+.dash-cur{color:var(--muted);font-size:.58em;margin-right:3px}
+#revNum{font-variant-numeric:tabular-nums}
+.dash-delta{margin-top:8px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dash-delta .arrow,.dash-delta #revDelta{color:var(--done);font-weight:700}
+.dash-delta .arrow{font-size:10px}
+.dash-live{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--done);border:1px solid #1f3a30;background:rgba(63,221,160,.06);padding:5px 11px;border-radius:999px;white-space:nowrap;height:fit-content}
+.dash-live i{width:7px;height:7px;border-radius:50%;background:var(--done);box-shadow:0 0 8px var(--done);animation:dashblink 1.6s ease-in-out infinite}
+@keyframes dashblink{0%,100%{opacity:1}50%{opacity:.3}}
+.dash-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{border:1px solid var(--line);border-radius:12px;background:rgba(13,20,34,.55);padding:11px 12px}
+.kpi-l{display:block;font-size:11px;color:var(--muted-2)}
+.kpi b{font-family:var(--display);font-size:23px;font-weight:700;letter-spacing:-.01em;display:block;margin-top:3px;transition:color .3s}
+.kpi em{font-style:normal;font-size:10.5px;font-weight:600;color:var(--done)}
+.dash-chart{position:relative;border:1px solid var(--line);border-radius:12px;background:rgba(13,20,34,.45);padding:13px 15px 12px;flex:1;display:flex;flex-direction:column;min-height:0}
+.dash-chart-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:10px}
+.dash-chart-tag{color:var(--done);font-weight:600;font-size:11.5px}
+.bars{display:flex;align-items:flex-end;gap:7px;flex:1;min-height:70px}
+.bar{flex:1;height:0;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,var(--running),#a15c07);opacity:.5;transition:height .7s cubic-bezier(.22,1,.36,1),opacity .5s}
+.bar.on{opacity:.9}
+.bar.last{background:linear-gradient(180deg,var(--done),#178a60);box-shadow:0 0 18px -5px var(--done)}
+.bar.last.on{opacity:1}
+.feed{position:absolute;top:38px;right:12px;width:min(66%,270px);display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:2}
+.feed-row{display:flex;align-items:center;gap:9px;background:rgba(8,12,22,.9);border:1px solid var(--line-2);border-radius:10px;padding:7px 11px;font-size:12px;box-shadow:0 12px 30px -14px #000;animation:feedIn .5s cubic-bezier(.22,1,.36,1) both}
+.feed-row .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.feed-row .co{color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed-row .amt{margin-left:auto;color:var(--done);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+@keyframes feedIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
@@ -355,13 +388,34 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
     </div>
 
     <div class="stage">
-      <canvas id="flow" aria-label="Animated diagram of an AI workflow moving tasks between steps"></canvas>
+      <div class="dash" aria-label="Example CRM dashboard showing client revenue climbing in real time">
+        <div class="dash-top">
+          <div>
+            <span class="dash-eyebrow">Client revenue · this month</span>
+            <div class="dash-rev"><span class="dash-cur">$</span><span id="revNum">1,248,905</span></div>
+            <div class="dash-delta"><span class="arrow">▲</span><span id="revDelta">+$104,200</span>&nbsp;in the last minute</div>
+          </div>
+          <span class="dash-live"><i></i>LIVE</span>
+        </div>
+
+        <div class="dash-kpis">
+          <div class="kpi"><span class="kpi-l">Active clients</span><b id="kpiClients">38</b><em>▲ 2 new</em></div>
+          <div class="kpi"><span class="kpi-l">Deals won · Aug</span><b id="kpiDeals">14</b><em>▲ on target</em></div>
+          <div class="kpi"><span class="kpi-l">Avg. reply</span><b>1m</b><em>▼ 34%</em></div>
+        </div>
+
+        <div class="dash-chart">
+          <div class="dash-chart-head"><span>Revenue by month</span><span class="dash-chart-tag">▲ 18% MoM</span></div>
+          <div class="feed" id="feed" aria-hidden="true"></div>
+          <div class="bars" id="bars"></div>
+        </div>
+      </div>
+
       <div class="stage-bar">
-        <span class="key"><i style="background:#8B7BFF"></i>Incoming</span>
-        <span class="key"><i style="background:#F5A524"></i>AI at work</span>
-        <span class="key"><i style="background:#6E7C99"></i>System task</span>
-        <span class="key"><i style="background:#3FDDA0"></i>Done</span>
-        <span class="counter">handled in this demo: <b id="tally">0</b></span>
+        <span class="key"><i style="background:#3FDDA0"></i>Payment in</span>
+        <span class="key"><i style="background:#F5A524"></i>Invoice sent</span>
+        <span class="key"><i style="background:#8B7BFF"></i>New lead</span>
+        <span class="counter">live demo · <b style="color:#3FDDA0">updating</b></span>
       </div>
     </div>
   </div>
@@ -879,242 +933,112 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
   })();
 
   /* ============================================================
-     HERO — live workflow simulation
+     HERO — live CRM revenue dashboard
      ============================================================ */
-  var canvas = document.getElementById("flow");
-  var ctx = canvas.getContext("2d");
-  var tallyEl = document.getElementById("tally");
+  (function(){
+    var revNum = document.getElementById("revNum");
+    if (!revNum) return;
+    var reducedM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revDelta = document.getElementById("revDelta");
+    var feed     = document.getElementById("feed");
+    var barsWrap = document.getElementById("bars");
+    var kClients = document.getElementById("kpiClients");
+    var kDeals   = document.getElementById("kpiDeals");
+    var stage    = revNum.closest(".stage");
 
-  var C = { queued:"#8B7BFF", running:"#F5A524", task:"#6E7C99", done:"#3FDDA0",
-            line:"#1E2739", text:"#CBD3E2", panel:"#0D1422" };
+    var revenue = 1248905, deltaMin = 0, clients = 38, deals = 14;
+    function fmt(n){ return Math.round(n).toLocaleString("en-US"); }
 
-  var WIDE = {
-    cols: 5,
-    nodes: [
-      { id:"call",     label:"Call answered", kind:"queued",  c:0, r:0.10 },
-      { id:"email",    label:"New email",     kind:"queued",  c:0, r:0.90 },
-      { id:"agent",    label:"Agent decides", kind:"running", c:1, r:0.50 },
-      { id:"extract",  label:"Reads details", kind:"running", c:2, r:0.13 },
-      { id:"forecast", label:"Checks data",   kind:"task",    c:2, r:0.87 },
-      { id:"crm",      label:"Updates CRM",   kind:"task",    c:3, r:0.13 },
-      { id:"reply",    label:"Writes reply",  kind:"running", c:3, r:0.87 },
-      { id:"done",     label:"Handled",       kind:"done",    c:4, r:0.50 }
-    ],
-    edges: [["call","agent"],["email","agent"],["agent","extract"],
-            ["agent","forecast"],["extract","crm"],["forecast","reply"],
-            ["crm","done"],["reply","done"]]
-  };
-
-  var NARROW = {
-    cols: 3,
-    nodes: [
-      { id:"call",  label:"Call in",       kind:"queued",  c:0, r:0.10 },
-      { id:"email", label:"Email in",      kind:"queued",  c:0, r:0.90 },
-      { id:"agent", label:"Agent decides", kind:"running", c:1, r:0.50 },
-      { id:"crm",   label:"CRM updated",   kind:"task",    c:2, r:0.13 },
-      { id:"done",  label:"Handled",       kind:"done",    c:2, r:0.87 }
-    ],
-    edges: [["call","agent"],["email","agent"],["agent","crm"],["agent","done"]]
-  };
-
-  var layout, nodes, edges, W = 0, H = 0, dpr = 1;
-  var packets = [], done = 0, spawnClock = 0, t0 = performance.now(), running = true;
-
-  function pick(){ return (canvas.clientWidth < 520) ? NARROW : WIDE; }
-
-  function build(){
-    layout = pick();
-    nodes = {};
-    var padX = layout === NARROW ? 56 : 64;
-    var padY = 46;
-    var span = (W - padX * 2) / (layout.cols - 1);
-
-    layout.nodes.forEach(function(n){
-      nodes[n.id] = { id:n.id, label:n.label, kind:n.kind,
-        x: padX + n.c * span, y: padY + n.r * (H - padY * 2), pulse: 0, w: 0 };
+    var monthly = [40, 52, 47, 61, 58, 72, 80, 95];
+    var barEls = [];
+    monthly.forEach(function(v, i){
+      var b = document.createElement("div");
+      b.className = "bar" + (i === monthly.length - 1 ? " last" : "");
+      barsWrap.appendChild(b);
+      barEls.push(b);
     });
-
-    ctx.font = "500 12.5px 'Instrument Sans', system-ui, sans-serif";
-    Object.keys(nodes).forEach(function(k){
-      nodes[k].w = Math.min(ctx.measureText(nodes[k].label).width + 32, 140);
-    });
-
-    edges = layout.edges.map(function(e){ return { a:nodes[e[0]], b:nodes[e[1]] }; });
-    edges.forEach(function(e){ (nodes[e.a.id].outEdges = nodes[e.a.id].outEdges || []).push(e); });
-    packets = [];
-  }
-
-  function resize(){
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = canvas.clientWidth; H = canvas.clientHeight;
-    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    build();
-  }
-
-  function bez(e, t){
-    var x0 = e.a.x + e.a.w / 2, y0 = e.a.y;
-    var x1 = e.b.x - e.b.w / 2, y1 = e.b.y;
-    var dx = (x1 - x0) * 0.55;
-    var cx0 = x0 + dx, cx1 = x1 - dx;
-    var u = 1 - t, u2 = u * u, t2 = t * t;
-    return { x: u2*u*x0 + 3*u2*t*cx0 + 3*u*t2*cx1 + t2*t*x1,
-             y: u2*u*y0 + 3*u2*t*y0  + 3*u*t2*y1  + t2*t*y1 };
-  }
-
-  function spawn(){
-    var sources = Object.keys(nodes).filter(function(k){ return nodes[k].kind === "queued"; });
-    var src = nodes[sources[Math.floor(Math.random() * sources.length)]];
-    var outs = src.outEdges;
-    if (!outs || !outs.length) return;
-    packets.push({ e: outs[0], t: 0, sp: 0.34 + Math.random() * 0.18, color: C[src.kind] });
-    src.pulse = 1;
-  }
-
-  function drawGrid(){
-    ctx.save();
-    ctx.fillStyle = "#111927";
-    for (var x = 16; x < W; x += 26)
-      for (var y = 16; y < H; y += 26) ctx.fillRect(x, y, 1, 1);
-    ctx.restore();
-  }
-
-  function drawEdges(now){
-    edges.forEach(function(e){
-      ctx.beginPath();
-      for (var i = 0; i <= 26; i++) {
-        var p = bez(e, i / 26);
-        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-      }
-      ctx.strokeStyle = C.line;
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash([3, 7]);
-      ctx.lineDashOffset = reduced ? 0 : -(now / 42) % 10;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    });
-  }
-
-  function roundRect(x, y, w, h, r){
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  function drawNodes(){
-    Object.keys(nodes).forEach(function(k){
-      var n = nodes[k], col = C[n.kind];
-      var h = 33, x = n.x - n.w / 2, y = n.y - h / 2;
-
-      if (n.pulse > 0.01) {
-        ctx.beginPath();
-        ctx.globalAlpha = n.pulse * 0.5;
-        roundRect(x - 8*(1-n.pulse) - 4, y - 8*(1-n.pulse) - 4,
-                  n.w + 16*(1-n.pulse) + 8, h + 16*(1-n.pulse) + 8, 15);
-        ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      roundRect(x, y, n.w, h, 10);
-      ctx.fillStyle = C.panel; ctx.fill();
-      ctx.strokeStyle = n.pulse > 0.2 ? col : "#232E44";
-      ctx.lineWidth = 1; ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(x + 13, n.y, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = col; ctx.fill();
-
-      ctx.fillStyle = C.text;
-      ctx.font = "500 12.5px 'Instrument Sans', system-ui, sans-serif";
-      ctx.textBaseline = "middle";
-      ctx.fillText(n.label, x + 23, n.y + 0.5);
-
-      n.pulse *= 0.92;
-    });
-  }
-
-  function drawPackets(){
-    packets.forEach(function(p){
-      var pt = bez(p.e, p.t);
-      ctx.save();
-      ctx.shadowColor = p.color; ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 3.6, 0, Math.PI * 2);
-      ctx.fillStyle = p.color; ctx.fill();
-      ctx.restore();
-
-      var tail = bez(p.e, Math.max(0, p.t - 0.09));
-      ctx.beginPath();
-      ctx.moveTo(tail.x, tail.y); ctx.lineTo(pt.x, pt.y);
-      ctx.strokeStyle = p.color; ctx.globalAlpha = 0.28; ctx.lineWidth = 2.2;
-      ctx.stroke(); ctx.globalAlpha = 1;
-    });
-  }
-
-  function step(dt){
-    for (var i = packets.length - 1; i >= 0; i--) {
-      var p = packets[i];
-      p.t += p.sp * dt;
-      if (p.t >= 1) {
-        var node = p.e.b;
-        node.pulse = 1;
-        packets.splice(i, 1);
-        var outs = node.outEdges;
-        if (outs && outs.length) {
-          var next = outs[Math.floor(Math.random() * outs.length)];
-          packets.push({ e: next, t: 0, sp: 0.34 + Math.random() * 0.18, color: C[node.kind] });
-        } else { done++; tallyEl.textContent = done; }
-      }
+    var maxV = Math.max.apply(null, monthly);
+    function layoutBars(){
+      var h = (barsWrap.clientHeight || 120) - 6;
+      if (h < 24) h = 24;
+      barEls.forEach(function(b, i){ b.style.height = (monthly[i] / maxV * h) + "px"; });
     }
-    spawnClock += dt;
-    if (spawnClock > 0.85 && packets.length < 9) { spawnClock = 0; spawn(); }
-  }
+    window.addEventListener("resize", layoutBars);
 
-  var last = performance.now();
-  function frame(now){
-    if (!running) { last = now; requestAnimationFrame(frame); return; }
-    var dt = Math.min((now - last) / 1000, 0.05);
-    last = now;
-    ctx.clearRect(0, 0, W, H);
-    drawGrid();
-    drawEdges(now - t0);
-    step(dt);
-    drawPackets();
-    drawNodes();
-    requestAnimationFrame(frame);
-  }
+    var companies = ["Acme Co","Northwind","Vertex Labs","Blue Harbor","Sunra Health",
+      "Cedar & Co","Kestrel","Monarch Retail","Lumen Group","Pinehill","Atlas Freight","Orbit Media"];
 
-  function staticFrame(){
-    ctx.clearRect(0, 0, W, H);
-    drawGrid();
-    drawEdges(0);
-    edges.forEach(function(e, i){
-      var pt = bez(e, 0.4 + (i % 3) * 0.2);
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 3.6, 0, Math.PI * 2);
-      ctx.fillStyle = C[e.a.kind]; ctx.fill();
+    function pushPayment(amount){
+      if (!feed) return;
+      var co = companies[Math.floor(Math.random() * companies.length)];
+      var row = document.createElement("div");
+      row.className = "feed-row";
+      row.innerHTML = '<span class="dot" style="background:#3FDDA0"></span>' +
+                      '<span class="co">' + co + '</span>' +
+                      '<span class="amt">+$' + fmt(amount) + '</span>';
+      feed.prepend(row);
+      while (feed.children.length > 2) feed.removeChild(feed.lastChild);
+    }
+
+    function flash(el){
+      if (!el) return;
+      el.style.color = "#3FDDA0";
+      setTimeout(function(){ el.style.color = ""; }, 480);
+    }
+
+    if (reducedM){
+      layoutBars();
+      barEls.forEach(function(b){ b.classList.add("on"); });
+      revNum.textContent = fmt(revenue);
+      if (revDelta) revDelta.textContent = "+$104,200";
+      pushPayment(2400);
+      return;
+    }
+
+    // grow the bars in on first paint
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        layoutBars();
+        barEls.forEach(function(b, i){ setTimeout(function(){ b.classList.add("on"); }, 120 + i * 70); });
+      });
     });
-    drawNodes();
-    tallyEl.textContent = "—";
-  }
 
-  var rt2;
-  window.addEventListener("resize", function(){
-    clearTimeout(rt2);
-    rt2 = setTimeout(function(){ resize(); if (reduced) staticFrame(); }, 140);
-  });
-  document.addEventListener("visibilitychange", function(){ running = !document.hidden; });
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(function(en){ running = en[0].isIntersecting && !document.hidden; },
-      { threshold: 0 }).observe(canvas);
-  }
+    var running = true;
+    if ("IntersectionObserver" in window && stage){
+      new IntersectionObserver(function(en){ running = en[0].isIntersecting && !document.hidden; },
+        { threshold: 0 }).observe(stage);
+    }
+    document.addEventListener("visibilitychange", function(){ running = !document.hidden; });
 
-  resize();
-  if (reduced) { staticFrame(); } else { requestAnimationFrame(frame); }
+    var last = performance.now(), nextPay = 900, minuteClock = 0;
+    function frame(now){
+      var dt = Math.min(now - last, 60); last = now;
+      if (running){
+        var rate = 1.7 + Math.sin(now / 850) * 0.7;   // dollars per millisecond trickle
+        var add = rate * dt;
+        revenue += add; deltaMin += add;
+
+        nextPay -= dt;
+        if (nextPay <= 0){
+          nextPay = 1200 + Math.random() * 2400;
+          var amt = Math.round(300 + Math.random() * 6400);
+          revenue += amt; deltaMin += amt;
+          pushPayment(amt);
+          if (Math.random() < 0.45){ deals++;   kDeals.textContent   = deals;   flash(kDeals); }
+          if (Math.random() < 0.16){ clients++; kClients.textContent = clients; flash(kClients); }
+        }
+
+        minuteClock += dt;
+        if (minuteClock > 60000){ minuteClock = 0; deltaMin = 0; }
+
+        revNum.textContent = fmt(revenue);
+        if (revDelta) revDelta.textContent = "+$" + fmt(deltaMin);
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+
 })();
 </script>
 </body>
