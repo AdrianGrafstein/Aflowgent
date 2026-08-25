@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aflowgent — Dashboard</title>
+<!--
+===============================================================================
+  AFLOWGENT STUDIO CRM — hosted edition  (v2 · 2026-08-04)
+===============================================================================
+  Lives at aflowgent.com/dashboard. Data is in Supabase (real Postgres), NOT in the
+  browser — so it survives everything, syncs across devices, and can't vanish.
+
+  SETUP: fill in SUPABASE_URL and SUPABASE_KEY below, run schema.sql in the
+  Supabase SQL editor, then follow SETUP.md. Until the two values are filled in
+  the app says so instead of silently failing.
+
+  ACCESS: only sales@aflowgent.com and info@aflowgent.com. Signing in happens on
+  the homepage (aflowgent.com → "Login"), which emails a 6-digit code. Reaching
+  this page without a valid session bounces you straight back there. The real
+  lock is Row Level Security in the database — the redirect is just the front
+  door. Anyone else who lands here gets nothing, even with the public key.
+
+  The SUPABASE_KEY below is a PUBLISHABLE key. It is meant to be in public
+  client code and is safe to commit — it grants nothing on its own, because
+  every table's RLS policy checks your signed-in email first.
+===============================================================================
+-->
+<style>
+:root{
+  --bg:#14120F; --surface:#1C1916; --surface-2:#232019; --surface-3:#2B2721;
+  --border:#332D26; --border-soft:#262119;
+  --text:#F2EBDD; --text-dim:#A2988A; --text-faint:#6E655A;
+  --gold:#C6A45C; --gold-soft:#8A7440;
+  --violet:#8E7CC3; --amber:#D9A441; --mint:#7BC49A; --danger:#D97764;
+  --radius:10px; --radius-sm:7px; --sidebar-w:230px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  --font-display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --shadow:0 18px 40px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:20px 18px 16px;border-bottom:1px solid var(--border-soft)}
+.brand h1{font-family:var(--font-display);font-size:20px;font-weight:600}
+.brand .dot{color:var(--gold)}
+.brand p{font-size:10px;color:var(--text-faint);margin-top:3px;letter-spacing:.22em}
+.nav{padding:12px 10px;flex:1;overflow-y:auto}
+.nav-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);padding:12px 8px 6px}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);color:var(--text-dim);font-size:13.5px;margin-bottom:1px;transition:background .12s,color .12s}
+.nav a:hover{background:var(--surface-2);color:var(--text)}
+.nav a.active{background:var(--surface-3);color:var(--text)}
+.nav a.active .ico{color:var(--gold)}
+.ico{width:16px;text-align:center;font-size:13px;color:var(--text-faint);flex:0 0 16px}
+.nav a .count{margin-left:auto;font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.sidebar-foot{padding:12px 16px;border-top:1px solid var(--border-soft);font-size:10.5px;color:var(--text-faint);line-height:1.6}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:58px;flex:0 0 58px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:10px;padding:0 24px;background:var(--bg);position:sticky;top:0;z-index:20}
+.search{position:relative;flex:1;max-width:420px}
+.search input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px 8px 32px;font-size:13px;outline:none}
+.search input:focus{border-color:var(--gold-soft)}
+.search .mag{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint);font-size:12px}
+.search-results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:340px;overflow-y:auto;z-index:60}
+.search-results .sr-group{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-faint);padding:9px 12px 4px}
+.search-results .sr{display:flex;align-items:center;gap:9px;padding:7px 12px;cursor:pointer;font-size:13px}
+.search-results .sr:hover{background:var(--surface-3)}
+.search-results .sr small{color:var(--text-faint);margin-left:auto;font-size:11px}
+.search-empty{padding:14px 12px;color:var(--text-faint);font-size:12.5px}
+
+.content{padding:26px 24px 60px;flex:1;max-width:1360px;width:100%}
+.page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.page-head h2{font-family:var(--font-display);font-size:25px;font-weight:600}
+.page-head .sub{color:var(--text-dim);font-size:13px;margin-top:3px}
+.page-head .spacer{flex:1}
+
+.btn{background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px 13px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:7px;transition:background .12s,border-color .12s}
+.btn:hover{background:var(--surface-3);border-color:var(--gold-soft)}
+.btn-primary{background:var(--gold);border-color:var(--gold);color:#191510;font-weight:600}
+.btn-primary:hover{background:#D6B36B;border-color:#D6B36B}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--text-dim)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-danger:hover{border-color:var(--danger);color:var(--danger)}
+
+.card{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:18px}
+.card-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.card-head h3{font-size:12.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-dim)}
+.card-head .spacer{flex:1}
+.card-sub{font-size:12px;color:var(--text-faint);margin:-8px 0 12px}
+.grid{display:grid;gap:14px}
+.tiles{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.tile{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:16px 18px}
+.tile .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
+.tile .v{font-family:var(--font-display);font-size:27px;margin-top:6px;font-variant-numeric:tabular-nums}
+.tile .m{font-size:12px;color:var(--text-dim);margin-top:3px}
+.tile.accent-gold .v{color:var(--gold)}
+.tile.accent-violet .v{color:var(--violet)}
+.tile.accent-amber .v{color:var(--amber)}
+.tile.accent-mint .v{color:var(--mint)}
+.tile.accent-danger .v{color:var(--danger)}
+
+.stagebar{display:flex;gap:3px;height:9px;border-radius:5px;overflow:hidden;margin-bottom:12px}
+.stagebar span{display:block;transition:width .3s}
+.stagekey{display:flex;flex-wrap:wrap;gap:8px 16px}
+.stagekey div{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-dim)}
+.stagekey i{width:9px;height:9px;border-radius:2px;display:block}
+.stagekey b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);padding:11px 16px;border-bottom:1px solid var(--border-soft);font-weight:600;white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{color:var(--text-dim)}
+th .arrow{opacity:.6;font-size:9px;margin-left:3px}
+td{padding:12px 16px;border-bottom:1px solid var(--border-soft);font-size:13.5px;vertical-align:middle}
+tbody tr{cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:none}
+td .strong{font-weight:600}
+td .dim{color:var(--text-dim);font-size:12.5px}
+.num{font-variant-numeric:tabular-nums}
+tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--surface-2)}
+
+.filters{display:flex;gap:9px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;font-size:13px;outline:none;min-width:130px}
+.filters input:focus,.filters select:focus{border-color:var(--gold-soft)}
+.filters .spacer{flex:1}
+.result-count{font-size:12px;color:var(--text-faint)}
+
+.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;letter-spacing:.02em;white-space:nowrap;border:1px solid transparent}
+.badge i{width:6px;height:6px;border-radius:50%;background:currentColor;display:block}
+.badge-violet{color:var(--violet);background:rgba(142,124,195,.13);border-color:rgba(142,124,195,.28)}
+.badge-amber{color:var(--amber);background:rgba(217,164,65,.13);border-color:rgba(217,164,65,.28)}
+.badge-mint{color:var(--mint);background:rgba(123,196,154,.13);border-color:rgba(123,196,154,.28)}
+.badge-gold{color:var(--gold);background:rgba(198,164,92,.13);border-color:rgba(198,164,92,.28)}
+.badge-dim{color:var(--text-dim);background:var(--surface-3);border-color:var(--border)}
+.badge-danger{color:var(--danger);background:rgba(217,119,100,.13);border-color:rgba(217,119,100,.3)}
+.chip{display:inline-block;padding:2px 8px;border-radius:5px;background:var(--surface-3);border:1px solid var(--border);font-size:11.5px;color:var(--text-dim);margin:0 4px 4px 0}
+.money-in{color:var(--mint)}
+.money-out{color:var(--danger)}
+
+.detail-head{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px}
+.detail-head .crumb{font-size:12px;color:var(--text-faint);margin-bottom:9px}
+.detail-head .crumb a:hover{color:var(--gold)}
+.detail-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.detail-title h2{font-family:var(--font-display);font-size:23px;font-weight:600}
+.detail-title .spacer{flex:1}
+.detail-meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)}
+.detail-meta div{font-size:12.5px}
+.detail-meta .k{color:var(--text-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+.cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
+@media(max-width:960px){.cols{grid-template-columns:1fr}.sidebar{display:none}}
+.fieldgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:15px 22px}
+.fieldgrid .f .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-bottom:4px}
+.fieldgrid .f .v{font-size:13.5px;word-break:break-word;white-space:pre-wrap}
+.fieldgrid .f .v.empty{color:var(--text-faint);font-style:italic}
+
+.rel-list{display:flex;flex-direction:column}
+.rel{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--border-soft);cursor:pointer}
+.rel:last-child{border-bottom:none}
+.rel:hover .rel-name{color:var(--gold)}
+.rel .avatar{width:29px;height:29px;border-radius:50%;background:var(--surface-3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);flex:0 0 29px;font-weight:600}
+.rel-name{font-size:13.5px}
+.rel-sub{font-size:11.5px;color:var(--text-faint)}
+.rel .spacer{flex:1}
+
+.timeline{position:relative;padding-left:20px}
+.timeline:before{content:"";position:absolute;left:5px;top:5px;bottom:5px;width:1px;background:var(--border)}
+.tl{position:relative;padding-bottom:15px}
+.tl:last-child{padding-bottom:0}
+.tl:before{content:"";position:absolute;left:-19px;top:5px;width:9px;height:9px;border-radius:50%;background:var(--surface-3);border:2px solid var(--bg)}
+.tl.t-violet:before{background:var(--violet)}
+.tl.t-amber:before{background:var(--amber)}
+.tl.t-mint:before{background:var(--mint)}
+.tl.t-gold:before{background:var(--gold)}
+.tl .th{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+.tl .tt{font-size:13.5px}
+.tl .td{font-size:11.5px;color:var(--text-faint);margin-left:auto;white-space:nowrap}
+.tl .tb{font-size:12.5px;color:var(--text-dim);margin-top:3px}
+
+.att{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--border-soft);cursor:pointer}
+.att:last-child{border-bottom:none}
+.att:hover .att-t{color:var(--gold)}
+.att .att-t{font-size:13.5px}
+.att .att-r{font-size:12px;color:var(--text-dim);margin-top:2px}
+.att .spacer{flex:1}
+.empty-line{color:var(--text-faint);font-size:12.5px;font-style:italic}
+
+.empty{text-align:center;padding:44px 20px;color:var(--text-faint)}
+.empty .e-ico{font-size:26px;color:var(--surface-3);margin-bottom:10px}
+.empty h4{font-size:14px;color:var(--text-dim);margin-bottom:5px;font-weight:600}
+.empty p{font-size:12.5px;max-width:360px;margin:0 auto 14px}
+
+.overlay{position:fixed;inset:0;background:rgba(8,7,5,.72);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;overflow-y:auto}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:600px;box-shadow:var(--shadow)}
+.modal-head{display:flex;align-items:center;padding:17px 20px;border-bottom:1px solid var(--border-soft)}
+.modal-head h3{font-family:var(--font-display);font-size:17px;font-weight:600}
+.modal-head .spacer{flex:1}
+.modal-body{padding:20px}
+.modal-foot{display:flex;gap:9px;justify-content:flex-end;padding:15px 20px;border-top:1px solid var(--border-soft)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-grid .full{grid-column:1/-1}
+@media(max-width:560px){.form-grid{grid-template-columns:1fr}}
+.field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-bottom:5px}
+.field label .req{color:var(--gold)}
+.field input,.field select,.field textarea{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 11px;font-size:13.5px;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold-soft)}
+.field textarea{resize:vertical;min-height:74px}
+.field .err{color:var(--danger);font-size:11.5px;margin-top:4px;display:none}
+.field.invalid input,.field.invalid select,.field.invalid textarea{border-color:var(--danger)}
+.field.invalid .err{display:block}
+
+.toasts{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;gap:9px}
+.toast{background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:var(--radius-sm);padding:11px 15px;font-size:13px;box-shadow:var(--shadow);min-width:220px;animation:slidein .18s ease-out}
+.toast.ok{border-left-color:var(--mint)}
+.toast.warn{border-left-color:var(--amber)}
+@keyframes slidein{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+
+/* ---------- login gate ---------- */
+.gate{position:fixed;inset:0;background:var(--bg);z-index:400;display:flex;
+  align-items:center;justify-content:center;padding:24px}
+.gate-card{width:100%;max-width:390px;text-align:left}
+.gate-card .mark{font-family:var(--font-display);font-size:30px;font-weight:600;margin-bottom:4px}
+.gate-card .mark .dot{color:var(--gold)}
+.gate-card .tag{font-size:10.5px;letter-spacing:.22em;color:var(--text-faint);margin-bottom:30px}
+.gate-card h2{font-family:var(--font-display);font-size:20px;font-weight:600;margin-bottom:6px}
+.gate-card p.lede{font-size:13.5px;color:var(--text-dim);margin-bottom:20px;line-height:1.6}
+.gate-card label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text-faint);margin-bottom:6px}
+.gate-card input{width:100%;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:11px 13px;font-size:14px;outline:none}
+.gate-card input:focus{border-color:var(--gold-soft)}
+.gate-card input.code{letter-spacing:.42em;font-size:20px;text-align:center;
+  font-variant-numeric:tabular-nums;padding:13px}
+.gate-card .btn{width:100%;justify-content:center;margin-top:14px;padding:11px}
+.gate-msg{margin-top:14px;font-size:12.5px;line-height:1.6;display:none}
+.gate-msg.show{display:block}
+.gate-msg.err{color:var(--danger)}
+.gate-msg.ok{color:var(--mint)}
+.gate-msg code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:11.5px}
+.gate-back{margin-top:16px;font-size:12.5px;color:var(--text-faint);cursor:pointer;display:inline-block}
+.gate-back:hover{color:var(--gold)}
+.gate-foot{margin-top:30px;font-size:11.5px;color:var(--text-faint);line-height:1.7}
+.app{display:none}
+.app.ready{display:flex}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="mark">Aflowgent<span class="dot">.</span></div>
+    <div class="tag">DASHBOARD</div>
+
+    <div id="gateRedirect">
+      <h2>Checking access…</h2>
+      <p class="lede">Taking you to the sign-in page.</p>
+    </div>
+
+    <div id="gateStep1" style="display:none">
+      <h2>Sign in</h2>
+      <p class="lede">Enter your Aflowgent address and we'll email you a 6-digit code.</p>
+      <label for="gateEmail">Email</label>
+      <input id="gateEmail" type="email" autocomplete="username" placeholder="you@aflowgent.com" spellcheck="false">
+      <button class="btn btn-primary" id="gateSend">Email me a code</button>
+    </div>
+
+    <div id="gateStep2" style="display:none">
+      <h2>Check your inbox</h2>
+      <p class="lede">We sent a 6-digit code to <b id="gateSentTo"></b>. It expires in about an hour.</p>
+      <label for="gateCode">6-digit code</label>
+      <input id="gateCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <button class="btn btn-primary" id="gateVerify">Sign in</button>
+      <span class="gate-back" id="gateBack">← Use a different address</span>
+    </div>
+
+    <div class="gate-msg" id="gateMsg"></div>
+    <div class="gate-foot" id="gateFoot"></div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>Aflowgent<span class="dot">.</span></h1>
+      <p>DASHBOARD</p>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">
+      <span id="whoami"></span>
+      <div style="margin-top:8px"><a class="gate-back" href="/" style="margin-top:0">← aflowgent.com</a></div>
+      <div style="margin-top:4px"><span class="gate-back" onclick="signOut()">Sign out</span></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search">
+        <span class="mag">&#9906;</span>
+        <input id="globalSearch" type="text" placeholder="Search everything…" autocomplete="off">
+        <div id="searchResults" class="search-results" style="display:none"></div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-sm" onclick="refreshData()">Refresh</button>
+      <button class="btn btn-sm" onclick="exportData()">Export data</button>
+      <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">Import data</button>
+      <input id="importFile" type="file" accept=".json,application/json" style="display:none">
+    </div>
+    <div class="content" id="view"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ===========================================================================
+   CONFIG — Aflowgent's own pipeline and objects.
+   =========================================================================== */
+const CONFIG = {
+  app:{ name:"Aflowgent", currency:"$", locale:"en-US" },
+
+  /* Simpler than client builds, on purpose. */
+  stages:[
+    { key:"lead",     label:"Lead",          tone:"violet", rank:1 },
+    { key:"proposal", label:"Proposal",      tone:"amber",  rank:2 },
+    { key:"building", label:"Building",      tone:"gold",   rank:3 },
+    { key:"active",   label:"Active client", tone:"mint",   rank:4 },
+    { key:"dormant",  label:"Dormant",       tone:"dim",    rank:0 }
+  ],
+
+  lists:{
+    projStatus:["In development","Live / delivered","Paused","Cancelled"],
+    expenseCats:["Software & tools","Hosting & domains","Marketing","Hardware","Contractors","Travel","Other"],
+    revenueTypes:["Monthly payment","Upfront build","One-time project","Other"],
+    activityKinds:["Meeting","Call","Email","Proposal sent","Demo","Build milestone","Payment","Note"],
+    contactPrefs:["Email","Phone","Text","Any"]
+  },
+
+  objects:{
+    companies:{
+      label:"Company", plural:"Companies", icon:"▣", titleField:"name",
+      listColumns:["name","industry","stage","monthlyFee","status","nextStep"],
+      fields:[
+        {key:"name",       label:"Company name", type:"text", required:true, full:true},
+        {key:"stage",      label:"Pipeline stage", type:"select", stage:true},
+        {key:"industry",   label:"Industry / business type", type:"datalist"},
+        {key:"status",     label:"Status", type:"text"},
+        {key:"nextStep",   label:"Next step", type:"text"},
+        {key:"city",       label:"City / location", type:"text"},
+        {key:"website",    label:"Website", type:"url"},
+        {key:"monthlyFee", label:"Monthly fee ($)", type:"money"},
+        {key:"clientSince",label:"Client since", type:"date"},
+        {key:"source",     label:"How we found them", type:"text"},
+        {key:"notes",      label:"Notes", type:"textarea", full:true}
+      ]
+    },
+    contacts:{
+      label:"Contact", plural:"Contacts", icon:"◍", titleField:"name",
+      listColumns:["name","companyId","role","email","phone"],
+      fields:[
+        {key:"name",      label:"Full name", type:"text", required:true},
+        {key:"companyId", label:"Company", type:"relation", rel:"companies"},
+        {key:"role",      label:"Role / title", type:"text"},
+        {key:"email",     label:"Email", type:"email"},
+        {key:"phone",     label:"Phone", type:"phone"},
+        {key:"pref",      label:"Contact preference", type:"select", list:"contactPrefs"},
+        {key:"notes",     label:"Notes", type:"textarea", full:true}
+      ]
+    },
+    projects:{
+      label:"Project", plural:"Projects", icon:"◈", titleField:"name",
+      listColumns:["name","companyId","status","upfrontPrice","monthlyPrice","dueDate"],
+      fields:[
+        {key:"name",        label:"Project name", type:"text", required:true, full:true},
+        {key:"companyId",   label:"Company", type:"relation", rel:"companies"},
+        {key:"status",      label:"Status", type:"select", list:"projStatus", required:true},
+        {key:"startDate",   label:"Start date", type:"date"},
+        {key:"dueDate",     label:"Target delivery", type:"date"},
+        {key:"upfrontPrice",label:"Upfront price ($)", type:"money"},
+        {key:"monthlyPrice",label:"Monthly price ($)", type:"money"},
+        {key:"description", label:"Description", type:"textarea", full:true}
+      ]
+    },
+    expenses:{
+      label:"Expense", plural:"Expenses", icon:"▽", titleField:"name",
+      listColumns:["date","name","category","renewal","amount"],
+      fields:[
+        {key:"name",     label:"What was it", type:"text", required:true, full:true},
+        {key:"category", label:"Category", type:"select", list:"expenseCats"},
+        {key:"amount",   label:"Amount ($)", type:"money", required:true},
+        {key:"date",     label:"Date", type:"date", required:true},
+        {key:"renewal",  label:"Renews", type:"select", options:["Monthly","Yearly","One-time"]},
+        {key:"notes",    label:"Notes", type:"textarea", full:true}
+      ]
+    },
+    revenue:{
+      label:"Revenue entry", plural:"Revenue", icon:"△", titleField:"name",
+      listColumns:["date","name","companyId","type","renewal","amount"],
+      fields:[
+        {key:"name",     label:"Description", type:"text", required:true, full:true},
+        {key:"companyId",label:"From company", type:"relation", rel:"companies"},
+        {key:"type",     label:"Type", type:"select", list:"revenueTypes", required:true},
+        {key:"renewal",  label:"Renews", type:"select", options:["Monthly","Yearly","One-time"]},
+        {key:"amount",   label:"Amount ($)", type:"money", required:true},
+        {key:"date",     label:"Date received", type:"date", required:true},
+        {key:"notes",    label:"Notes", type:"textarea", full:true}
+      ]
+    },
+    activities:{
+      label:"Activity", plural:"Activity", icon:"≡", titleField:"title",
+      listColumns:["date","title","kind","relatedLabel"],
+      fields:[
+        {key:"title", label:"What happened", type:"text", required:true, full:true},
+        {key:"kind",  label:"Type", type:"select", list:"activityKinds"},
+        {key:"date",  label:"Date", type:"date", required:true},
+        {key:"relCompanyId", label:"Related company", type:"relation", rel:"companies"},
+        {key:"relProjectId", label:"Related project", type:"relation", rel:"projects"},
+        {key:"body",  label:"Detail", type:"textarea", full:true}
+      ]
+    }
+  },
+
+  nav:["companies","contacts","projects","expenses","revenue","activities"],
+  attention:{ staleProjectDays:14, staleLeadDays:7 }
+};
+
+const EMPTY = () => ({companies:[],contacts:[],projects:[],expenses:[],revenue:[],activities:[]});
+
+
+
+/* ===========================================================================
+   STORE — with browser persistence (guarded: falls back to in-memory where
+   storage is blocked) + JSON export/import for backups / moving machines.
+   =========================================================================== */
+/* ===========================================================================
+   SUPABASE — fill these two in after creating the project (see SETUP.md).
+   The publishable key is designed to live in public client code; it grants
+   nothing by itself because RLS checks your signed-in email on every row.
+   =========================================================================== */
+const SUPABASE_URL = "https://ttunjirntezbvsssnndd.supabase.co";
+const SUPABASE_KEY = "sb_publishable_jJLldw4WDDCBroq15Tw4pg_0ILRlgr9";
+const ALLOWED = ["sales@aflowgent.com", "info@aflowgent.com"];
+const CONFIGURED = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_KEY.startsWith("PASTE_");
+
+let sb = null, sessionEmail = "";
+
+/* ---- camelCase in the app  <->  snake_case in Postgres ---- */
+const KEY_TO_DB = {
+  companies:{monthlyFee:"monthly_fee", clientSince:"client_since", nextStep:"next_step"},
+  contacts:{companyId:"company_id"},
+  projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
+            upfrontPrice:"upfront_price", monthlyPrice:"monthly_price"},
+  expenses:{},
+  revenue:{companyId:"company_id"},
+  activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
+};
+const TABLES = ["companies","contacts","projects","expenses","revenue","activities"];
+const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price"]);
+const DATEY   = new Set(["client_since","date","start_date","due_date"]);
+
+function toDb(o,rec){
+  const m=KEY_TO_DB[o]||{}, out={};
+  Object.entries(rec).forEach(([k,v])=>{
+    if(k==="id"||k==="recurring"||v===undefined) return;
+    const dk=m[k]||k;
+    /* Postgres rejects "" for numeric and date columns — send null instead */
+    out[dk] = ((NUMERIC.has(dk)||DATEY.has(dk)) && (v===""||v===null)) ? null : v;
+  });
+  return out;
+}
+function fromDb(o,row){
+  const m=KEY_TO_DB[o]||{}, inv={};
+  Object.entries(m).forEach(([js,db])=>inv[db]=js);
+  const out={};
+  Object.entries(row).forEach(([k,v])=>{
+    if(k==="created_at"||k==="updated_at") return;
+    out[inv[k]||k] = (v===null ? "" : v);
+  });
+  return out;
+}
+function dbErr(e,what){
+  console.error(e);
+  toast("Couldn't "+what+" — "+(e.message||"connection problem"),"warn");
+}
+
+/* ===========================================================================
+   STORE — an in-memory mirror of the database. Reads come from the mirror so
+   every render stays synchronous; writes go to Postgres first and only update
+   the mirror once the row comes back, so what you see is what was saved.
+   =========================================================================== */
+const store = {
+  db: EMPTY(),
+  async loadAll(){
+    const res = await Promise.all(TABLES.map(t=>sb.from(t).select("*")));
+    TABLES.forEach((t,i)=>{
+      if(res[i].error) throw res[i].error;
+      this.db[t] = res[i].data.map(r=>fromDb(t,r));
+    });
+  },
+  all(o){ return this.db[o] ? this.db[o].slice() : []; },
+  get(o,id){ return (this.db[o]||[]).find(r=>r.id===id) || null; },
+  async create(o,rec){
+    const {data,error} = await sb.from(o).insert(toDb(o,rec)).select().single();
+    if(error){ dbErr(error,"save that"); return null; }
+    const r = fromDb(o,data); this.db[o].unshift(r); return r;
+  },
+  async update(o,id,patch){
+    const {data,error} = await sb.from(o).update(toDb(o,patch)).eq("id",id).select().single();
+    if(error){ dbErr(error,"save that"); return null; }
+    const r = fromDb(o,data);
+    const i = this.db[o].findIndex(x=>x.id===id);
+    if(i>=0) this.db[o][i]=r; else this.db[o].unshift(r);
+    return r;
+  },
+  async remove(o,id){
+    const {error} = await sb.from(o).delete().eq("id",id);
+    if(error){ dbErr(error,"delete that"); return false; }
+    this.db[o] = this.db[o].filter(x=>x.id!==id); return true;
+  },
+  activityFor(t,id){
+    const key = t==="companies" ? "relCompanyId" : t==="projects" ? "relProjectId" : null;
+    if(!key) return [];
+    let acts=this.db.activities.filter(a=>a[key]===id);
+    if(t==="companies"){
+      const pids=this.db.projects.filter(p=>p.companyId===id).map(p=>p.id);
+      acts=acts.concat(this.db.activities.filter(a=>pids.includes(a.relProjectId)&&a.relCompanyId!==id));
+    }
+    return acts.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  }
+};
+
+async function refreshData(){
+  try{ await store.loadAll(); render(); toast("Up to date","ok"); }
+  catch(e){ dbErr(e,"reload"); }
+}
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(store.db,null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const d=new Date(), pad=n=>String(n).padStart(2,"0");
+  a.download=`aflowgent-crm-backup-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("Backup downloaded","ok");
+}
+document.getElementById("importFile").addEventListener("change",function(){
+  const f=this.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=async ()=>{
+    let d; try{ d=JSON.parse(r.result); if(!d||typeof d!=="object") throw 0; }
+    catch(e){ toast("That file isn't a valid backup","warn"); return; }
+    const total=TABLES.reduce((n,t)=>n+((d[t]||[]).length),0);
+    if(!total){ toast("Nothing in that file to import","warn"); return; }
+    if(!confirm(`Add ${total} records from this file into the database?\n\nThis ADDS to what's already there — it doesn't replace it.`)) return;
+    try{
+      /* companies first so contacts/projects/revenue can point at their new ids */
+      const idmap={};
+      for(const c of (d.companies||[])){
+        const {data,error}=await sb.from("companies").insert(toDb("companies",c)).select().single();
+        if(error) throw error; idmap[c.id]=data.id;
+      }
+      for(const t of ["contacts","projects","revenue","activities","expenses"]){
+        for(const row of (d[t]||[])){
+          const copy=Object.assign({},row);
+          ["companyId","relCompanyId"].forEach(k=>{ if(copy[k]&&idmap[copy[k]]) copy[k]=idmap[copy[k]]; });
+          if(copy.relProjectId) delete copy.relProjectId;   // project ids change on import
+          const {error}=await sb.from(t).insert(toDb(t,copy));
+          if(error) throw error;
+        }
+      }
+      await store.loadAll(); render(); toast("Imported "+total+" records","ok");
+    }catch(e){ dbErr(e,"import that file"); }
+  };
+  r.readAsText(f); this.value="";
+});
+
+/* =========================== helpers ====================================== */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const stageOf=k=>CONFIG.stages.find(s=>s.key===k)||{key:k,label:k||"—",tone:"dim"};
+const listOf=f=>f.list?(CONFIG.lists[f.list]||[]):(f.options||[]);
+const objDef=o=>CONFIG.objects[o];
+const today=()=>new Date();
+
+function fmtDate(d){ if(!d) return "";
+  const dt=new Date(d+(String(d).length===10?"T12:00:00":"")); if(isNaN(dt)) return d;
+  return dt.toLocaleDateString(CONFIG.app.locale,{month:"short",day:"numeric",year:"numeric"}); }
+function fmtMoney(v){ if(v===""||v==null||isNaN(v)) return "";
+  const n=Number(v);
+  return (n<0?"-":"")+CONFIG.app.currency+Math.abs(n).toLocaleString(CONFIG.app.locale,{maximumFractionDigits:2}); }
+function daysSince(d){ if(!d) return null;
+  const dt=new Date(d+(String(d).length===10?"T12:00:00":"")); if(isNaN(dt)) return null;
+  return Math.floor((today()-dt)/86400000); }
+function relTime(d){ const n=daysSince(d);
+  if(n===null) return "—"; if(n<0) return "in "+Math.abs(n)+"d"; if(n===0) return "today";
+  if(n===1) return "yesterday"; if(n<30) return n+"d ago"; if(n<365) return Math.round(n/30)+"mo ago";
+  return Math.round(n/365)+"y ago"; }
+function initials(n){ return String(n||"?").split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase(); }
+function titleOf(o,rec){ if(!rec) return "—"; return rec[objDef(o).titleField]||"(untitled)"; }
+function toast(msg,kind){
+  const el=document.createElement("div"); el.className="toast "+(kind||""); el.textContent=msg;
+  $("#toasts").appendChild(el);
+  setTimeout(()=>{el.style.opacity="0";el.style.transition="opacity .25s";setTimeout(()=>el.remove(),260);},2600);
+}
+function monthKey(d){ return String(d||"").slice(0,7); }                 // "2026-08"
+function thisMonthKey(){ const d=today(),p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}`; }
+function monthLabel(){ return today().toLocaleDateString(CONFIG.app.locale,{month:"long",year:"numeric"}); }
+function sum(arr,f){ return arr.reduce((s,x)=>s+(Number(f?x[f]:x)||0),0); }
+
+/* ------- money math: the dashboard reads these, the tabs write them ------- */
+function revenueAll(){ return sum(store.all("revenue"),"amount"); }
+function expensesAll(){ return sum(store.all("expenses"),"amount"); }
+function revenueMonth(){ const k=thisMonthKey();
+  return sum(store.all("revenue").filter(r=>monthKey(r.date)===k),"amount"); }
+function expensesMonth(){ const k=thisMonthKey();
+  return sum(store.all("expenses").filter(r=>monthKey(r.date)===k),"amount"); }
+
+function stageBadge(k){ const s=stageOf(k); return `<span class="badge badge-${s.tone}"><i></i>${esc(s.label)}</span>`; }
+function toneColor(t){ return {violet:"var(--violet)",amber:"var(--amber)",mint:"var(--mint)",gold:"var(--gold)",dim:"var(--surface-3)"}[t]||"var(--surface-3)"; }
+function actTone(kind){
+  if(kind==="Payment") return "mint";
+  if(kind==="Email"||kind==="Call") return "violet";
+  if(kind==="Proposal sent"||kind==="Demo") return "amber";
+  return "gold";
+}
+
+function cellValue(o,rec,key){
+  const def=objDef(o), f=def.fields.find(f=>f.key===key);
+  if(key==="relatedLabel"){
+    const co=store.get("companies",rec.relCompanyId), pr=store.get("projects",rec.relProjectId);
+    const bits=[pr?titleOf("projects",pr):null, co?titleOf("companies",co):null].filter(Boolean);
+    return bits.length?`<span class="dim">${esc(bits.join(" · "))}</span>`:`<span class="dim">—</span>`;
+  }
+  const v=rec[key];
+  if(f&&f.stage) return stageBadge(v);
+  if(key===def.titleField) return `<span class="strong">${esc(v||"(untitled)")}</span>`;
+  if(f&&f.type==="relation"){
+    const r=store.get(f.rel,v); return r?esc(titleOf(f.rel,r)):`<span class="dim">—</span>`;
+  }
+  if(f&&f.type==="money"){
+    if(v===""||v==null) return `<span class="dim">—</span>`;
+    const cls=o==="expenses"?"money-out":o==="revenue"?"money-in":"";
+    return `<span class="num ${cls}">${fmtMoney(v)}</span>`;
+  }
+  if(f&&f.type==="date")  return `<span class="num dim">${v?fmtDate(v):"—"}</span>`;
+  if(f&&f.type==="bool")  return v?`<span class="badge badge-mint"><i></i>Yes</span>`:`<span class="dim">No</span>`;
+  return v?esc(v):`<span class="dim">—</span>`;
+}
+
+/* ========================== ROUTING ======================================= */
+let route={view:"dashboard",obj:null,id:null};
+let listState={};
+function parseHash(){
+  const h=(location.hash||"#/").replace(/^#\/?/,"");
+  const p=h.split("/").filter(Boolean);
+  if(!p.length) return {view:"dashboard"};
+  if(CONFIG.objects[p[0]]) return p[1]?{view:"detail",obj:p[0],id:p[1]}:{view:"list",obj:p[0]};
+  return {view:"dashboard"};
+}
+function go(hash){ location.hash=hash; }
+function render(){
+  route=parseHash(); renderNav(); closeSearch();
+  const v=$("#view");
+  const warn = "";
+  if(route.view==="dashboard") v.innerHTML=warn+viewDashboard();
+  else if(route.view==="list") v.innerHTML=warn+viewList(route.obj);
+  else v.innerHTML=warn+viewDetail(route.obj,route.id);
+  window.scrollTo(0,0); bindListControls();
+}
+window.addEventListener("hashchange",render);
+
+function renderNav(){
+  const items=[`<a href="#/" class="${route.view==="dashboard"?"active":""}"><span class="ico">◎</span>Dashboard</a>`,
+               `<div class="nav-label">Records</div>`];
+  CONFIG.nav.forEach(k=>{
+    const d=objDef(k); if(!d) return;
+    items.push(`<a href="#/${k}" class="${route.obj===k?"active":""}">
+      <span class="ico">${d.icon||"·"}</span>${esc(d.plural)}
+      <span class="count">${store.all(k).length}</span></a>`);
+  });
+  $("#nav").innerHTML=items.join("");
+}
+
+/* ========================== DASHBOARD ===================================== */
+function attentionItems(){
+  const out=[];
+  store.all("projects").forEach(p=>{
+    if(p.status!=="In development") return;
+    const acts=store.activityFor("projects",p.id);
+    const d=daysSince(acts[0]?acts[0].date:p.startDate);
+    if(d===null||d>CONFIG.attention.staleProjectDays)
+      out.push({t:p.name,r:d===null?"No activity logged yet":`Quiet for ${d} days`,tone:"amber",href:`#/projects/${p.id}`,sort:d??999});
+    const dd=p.dueDate?daysSince(p.dueDate):null;
+    if(dd!==null&&dd>0)
+      out.push({t:p.name,r:`Target delivery (${fmtDate(p.dueDate)}) has passed`,tone:"danger",href:`#/projects/${p.id}`,sort:1000+dd});
+  });
+  store.all("companies").forEach(c=>{
+    if(!["lead","proposal"].includes(c.stage)) return;
+    const acts=store.activityFor("companies",c.id);
+    const d=daysSince(acts[0]?acts[0].date:null);
+    if(d===null||d>CONFIG.attention.staleLeadDays)
+      out.push({t:c.name,r:d===null?`${stageOf(c.stage).label} with no activity logged`:`${stageOf(c.stage).label} quiet for ${d} days`,
+                tone:"violet",href:`#/companies/${c.id}`,sort:(d??999)+100});
+  });
+  return out.sort((a,b)=>b.sort-a.sort).slice(0,8);
+}
+
+function viewDashboard(){
+  const cos=store.all("companies");
+  const profit=revenueAll()-expensesAll();
+  const revM=revenueMonth(), expM=expensesMonth();
+  const inDev=store.all("projects").filter(p=>p.status==="In development");
+  const active=cos.filter(c=>c.stage==="active");
+  const mrr=sum(active,"monthlyFee");
+  const newClients=cos.filter(c=>{ const d=daysSince(c.clientSince); return d!==null&&d>=0&&d<=30; });
+  const att=attentionItems();
+  const counts=CONFIG.stages.map(s=>({...s,n:cos.filter(c=>c.stage===s.key).length}));
+  const total=Math.max(1,cos.length);
+  const bar=counts.filter(c=>c.n).map(c=>`<span style="width:${(c.n/total*100).toFixed(1)}%;background:${toneColor(c.tone)}"></span>`).join("");
+  const key=counts.map(c=>`<div><i style="background:${toneColor(c.tone)}"></i>${esc(c.label)} <b>${c.n}</b></div>`).join("");
+  const recent=store.all("activities").sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,7);
+
+  return `
+  <div class="page-head">
+    <div><h2>Dashboard</h2>
+      <div class="sub">${monthLabel()}</div></div>
+  </div>
+
+  <div class="grid tiles" style="margin-bottom:16px">
+    <div class="tile accent-gold"><div class="k">Net profit · all time</div>
+      <div class="v">${fmtMoney(profit)||"$0"}</div>
+      <div class="m">${fmtMoney(revenueAll())||"$0"} in · ${fmtMoney(expensesAll())||"$0"} out</div></div>
+    <div class="tile accent-mint"><div class="k">Revenue · ${esc(monthLabel())}</div>
+      <div class="v">${fmtMoney(revM)||"$0"}</div></div>
+    <div class="tile accent-danger"><div class="k">Expenses · ${esc(monthLabel())}</div>
+      <div class="v">${fmtMoney(expM)||"$0"}</div></div>
+    <div class="tile accent-violet"><div class="k">Active clients</div>
+      <div class="v">${active.length}</div>
+      ${mrr?`<div class="m">${fmtMoney(mrr)}/mo recurring</div>`:""}</div>
+  </div>
+
+  <div class="cols">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="card-head"><h3>Pipeline</h3><div class="spacer"></div>
+          <a class="btn btn-sm btn-ghost" href="#/companies">All companies →</a></div>
+        <div class="stagebar">${bar||'<span style="width:100%;background:var(--surface-3)"></span>'}</div>
+        <div class="stagekey">${key}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Projects in development</h3><div class="spacer"></div>
+          <span style="font-size:11px;color:var(--text-faint)">${inDev.length}</span></div>
+        ${inDev.length?inDev.map(p=>{ const co=store.get("companies",p.companyId);
+          return `<div class="rel" onclick="go('#/projects/${p.id}')">
+            <div class="avatar">${esc(initials(p.name))}</div>
+            <div><div class="rel-name">${esc(p.name)}</div>
+                 <div class="rel-sub">${co?esc(co.name)+" · ":""}${p.dueDate?"due "+fmtDate(p.dueDate):"no due date"}</div></div>
+            <div class="spacer"></div><span style="color:var(--text-faint)">›</span></div>`;}).join("")
+        :`<div class="empty-line">Nothing in development.</div>`}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Needs attention</h3></div>
+        ${att.length?att.map(a=>`
+          <div class="att" onclick="go('${a.href}')">
+            <span class="badge badge-${a.tone}" style="margin-top:1px"><i></i></span>
+            <div><div class="att-t">${esc(a.t)}</div><div class="att-r">${esc(a.r)}</div></div>
+            <div class="spacer"></div><span style="color:var(--text-faint)">›</span></div>`).join("")
+        :`<div class="empty-line">Nothing needs attention.</div>`}
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="card-head"><h3>New clients · last 30 days</h3><div class="spacer"></div>
+          <span style="font-size:11px;color:var(--text-faint)">${newClients.length}</span></div>
+        ${newClients.length?newClients.map(c=>`
+          <div class="rel" onclick="go('#/companies/${c.id}')">
+            <div class="avatar">${esc(initials(c.name))}</div>
+            <div><div class="rel-name">${esc(c.name)}</div>
+                 <div class="rel-sub">since ${fmtDate(c.clientSince)}${c.monthlyFee?" · "+fmtMoney(c.monthlyFee)+"/mo":""}</div></div>
+            <div class="spacer"></div><span style="color:var(--text-faint)">›</span></div>`).join("")
+        :`<div class="empty-line">None in the last 30 days.</div>`}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>This month's money</h3></div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
+          <div style="display:flex"><span style="color:var(--text-dim)">Money in</span><span style="flex:1"></span><span class="num money-in">${fmtMoney(revM)||"$0"}</span></div>
+          <div style="display:flex"><span style="color:var(--text-dim)">Money out</span><span style="flex:1"></span><span class="num money-out">${fmtMoney(expM)||"$0"}</span></div>
+          <div style="display:flex;border-top:1px solid var(--border-soft);padding-top:8px"><span style="color:var(--text-dim)">Net this month</span><span style="flex:1"></span>
+            <span class="num" style="color:${revM-expM>=0?"var(--mint)":"var(--danger)"};font-weight:600">${fmtMoney(revM-expM)||"$0"}</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Recent activity</h3><div class="spacer"></div>
+          <a class="btn btn-sm btn-ghost" href="#/activities">All →</a></div>
+        ${recent.length?`<div class="timeline">
+          ${recent.map(a=>{
+            const co=store.get("companies",a.relCompanyId), pr=store.get("projects",a.relProjectId);
+            const rel=[pr?pr.name:null,co?co.name:null].filter(Boolean).join(" · ");
+            return `<div class="tl t-${actTone(a.kind)}">
+              <div class="th"><span class="tt">${esc(a.title)}</span><span class="td">${relTime(a.date)}</span></div>
+              ${rel?`<div class="tb">${esc(rel)}</div>`:""}</div>`;}).join("")}</div>`
+        :`<div class="empty-line">Nothing logged yet.</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================ LIST ======================================== */
+const DEFAULT_SORT={ companies:{sort:"stage",dir:-1},   // furthest along on top
+                     expenses:{sort:"date",dir:-1}, revenue:{sort:"date",dir:-1},
+                     activities:{sort:"date",dir:-1}, projects:{sort:"dueDate",dir:1} };
+function viewList(o){
+  const d=objDef(o);
+  const st=listState[o]=listState[o]||{q:"",stage:"",industry:"",...(DEFAULT_SORT[o]||{sort:d.listColumns[0],dir:1})};
+  let rows=store.all(o);
+  if(st.q){ const q=st.q.toLowerCase(); rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); }
+  if(st.stage) rows=rows.filter(r=>r.stage===st.stage);
+  if(st.industry) rows=rows.filter(r=>r.industry===st.industry);
+
+  const sortVal=(r,k)=>{
+    const f=d.fields.find(f=>f.key===k);
+    if(f&&f.stage) return stageOf(r[k]).rank ?? 0;        // pipeline order, not A–Z
+    if(f&&f.type==="relation") return titleOf(f.rel,store.get(f.rel,r[k]))||"";
+    const v=r[k]; return typeof v==="number"?v:String(v==null?"":v).toLowerCase();
+  };
+  rows.sort((a,b)=>{
+    const x=sortVal(a,st.sort), y=sortVal(b,st.sort);
+    if(x>y) return st.dir; if(x<y) return -st.dir;
+    const fa=Number(a.monthlyFee)||0, fb=Number(b.monthlyFee)||0;   // then by monthly revenue
+    if(fa!==fb) return fb-fa;
+    return String(titleOf(o,a)).localeCompare(String(titleOf(o,b))); // then alphabetically
+  });
+
+  const hasStage=d.fields.some(f=>f.stage);
+  const cols=d.listColumns;
+  const head=cols.map(c=>{
+    const f=d.fields.find(f=>f.key===c);
+    const label=c==="relatedLabel"?"Related to":(f?f.label:c);
+    const arrow=st.sort===c?`<span class="arrow">${st.dir>0?"▲":"▼"}</span>`:"";
+    return `<th data-sort="${esc(c)}">${esc(label)}${arrow}</th>`;
+  }).join("");
+
+  /* money tabs get running totals in the header + a footer total row */
+  let totalsHtml="";
+  if(o==="expenses"){
+    const shown=sum(rows,"amount");
+    totalsHtml=`<div class="grid tiles" style="margin-bottom:14px">
+      <div class="tile accent-danger"><div class="k">Total · all time</div><div class="v">${fmtMoney(expensesAll())||"$0"}</div><div class="m">${store.all(o).length} expenses</div></div>
+      <div class="tile accent-amber"><div class="k">This month</div><div class="v">${fmtMoney(expensesMonth())||"$0"}</div><div class="m">${esc(monthLabel())}</div></div>
+      <div class="tile accent-violet"><div class="k">Renews monthly</div><div class="v">${fmtMoney(sum(store.all(o).filter(e=>e.renewal==="Monthly"),"amount"))||"$0"}</div></div>
+      <div class="tile"><div class="k">Renews yearly</div><div class="v">${fmtMoney(sum(store.all(o).filter(e=>e.renewal==="Yearly"),"amount"))||"$0"}</div></div>
+    </div>`;
+  }
+  if(o==="revenue"){
+    const monthly=sum(store.all(o).filter(r=>r.type==="Monthly payment"),"amount");
+    const upfront=sum(store.all(o).filter(r=>r.type==="Upfront build"),"amount");
+    totalsHtml=`<div class="grid tiles" style="margin-bottom:14px">
+      <div class="tile accent-mint"><div class="k">Total · all time</div><div class="v">${fmtMoney(revenueAll())||"$0"}</div><div class="m">${store.all(o).length} entries</div></div>
+      <div class="tile accent-gold"><div class="k">This month</div><div class="v">${fmtMoney(revenueMonth())||"$0"}</div><div class="m">${esc(monthLabel())}</div></div>
+      <div class="tile accent-violet"><div class="k">Monthly payments</div><div class="v">${fmtMoney(monthly)||"$0"}</div><div class="m">all recurring income logged</div></div>
+      <div class="tile"><div class="k">Upfront builds</div><div class="v">${fmtMoney(upfront)||"$0"}</div><div class="m">one-time build fees</div></div>
+    </div>`;
+  }
+  const showFoot=(o==="expenses"||o==="revenue")&&rows.length;
+  const amountIdx=cols.indexOf("amount");
+
+  return `
+  <div class="page-head">
+    <div><h2>${esc(d.plural)}</h2><div class="sub">${store.all(o).length} total</div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="openForm('${o}')">+ Add a new ${esc(d.label)}</button>
+  </div>
+
+  ${totalsHtml}
+
+  <div class="filters">
+    <input id="lq" type="text" placeholder="Filter ${esc(d.plural.toLowerCase())}…" value="${esc(st.q)}">
+    ${hasStage?`<select id="lstage"><option value="">All stages</option>
+      ${CONFIG.stages.map(s=>`<option value="${s.key}" ${st.stage===s.key?"selected":""}>${esc(s.label)}</option>`).join("")}
+    </select>`:""}
+    ${o==="companies"?`<select id="lindustry"><option value="">All industries</option>
+      ${[...new Set(store.all("companies").map(c=>c.industry).filter(Boolean))].sort().map(v=>
+        `<option value="${esc(v)}" ${st.industry===v?"selected":""}>${esc(v)}</option>`).join("")}
+    </select>`:""}
+    <div class="spacer"></div>
+    <span class="result-count">${rows.length} shown</span>
+  </div>
+
+  ${rows.length?`
+  <div class="table-wrap">
+    <table><thead><tr>${head}</tr></thead><tbody>
+      ${rows.map(r=>`<tr onclick="go('#/${o}/${r.id}')">
+        ${cols.map(c=>`<td>${cellValue(o,r,c)}</td>`).join("")}
+      </tr>`).join("")}
+    </tbody>
+    ${showFoot?`<tfoot><tr>
+      ${cols.map((c,i)=> i===0?`<td>Total shown</td>`
+        : i===amountIdx?`<td><span class="num ${o==="expenses"?"money-out":"money-in"}">${fmtMoney(sum(rows,"amount"))}</span></td>`
+        : `<td></td>`).join("")}
+    </tr></tfoot>`:""}
+    </table>
+  </div>`
+  :`<div class="table-wrap"><div class="empty">
+      <div class="e-ico">${d.icon||"·"}</div>
+      <h4>No ${esc(d.plural.toLowerCase())} yet</h4>
+      <p>${st.q||st.stage?"Try clearing the filters above.":`Add your first ${esc(d.label.toLowerCase())} — the dashboard updates the moment you do.`}</p>
+      <button class="btn btn-primary" onclick="openForm('${o}')">+ Add a new ${esc(d.label)}</button>
+    </div></div>`}`;
+}
+
+function bindListControls(){
+  const q=$("#lq");
+  if(q){ q.oninput=()=>{ listState[route.obj].q=q.value; const p=q.selectionStart;
+    $("#view").innerHTML=viewList(route.obj); bindListControls();
+    const n=$("#lq"); n.focus(); n.setSelectionRange(p,p); }; }
+  const s=$("#lstage");
+  if(s) s.onchange=()=>{ listState[route.obj].stage=s.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
+  const ind=$("#lindustry");
+  if(ind) ind.onchange=()=>{ listState[route.obj].industry=ind.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
+  document.querySelectorAll("th[data-sort]").forEach(th=>{
+    th.onclick=()=>{ const k=th.dataset.sort, st=listState[route.obj];
+      if(st.sort===k) st.dir*=-1; else {st.sort=k;st.dir=1;}
+      $("#view").innerHTML=viewList(route.obj); bindListControls(); };
+  });
+}
+
+/* =========================== DETAIL ======================================= */
+function viewDetail(o,id){
+  const d=objDef(o), rec=store.get(o,id);
+  if(!rec) return `<div class="empty"><h4>Not found</h4><p>That record no longer exists.</p>
+    <button class="btn" onclick="go('#/${o}')">Back to ${esc(d.plural)}</button></div>`;
+
+  const acts=(o==="companies"||o==="projects")?store.activityFor(o,id):[];
+
+  let related="";
+  if(o==="companies"){
+    const cts=store.all("contacts").filter(c=>c.companyId===id);
+    const prs=store.all("projects").filter(p=>p.companyId===id);
+    const rev=store.all("revenue").filter(r=>r.companyId===id);
+    related=`${relCard("Contacts",cts,"contacts",c=>c.role||"")}
+             ${relCard("Projects",prs,"projects",p=>p.status||"")}
+             ${relCard("Revenue from this client",rev,"revenue",r=>`${fmtMoney(r.amount)} · ${fmtDate(r.date)}`)}`;
+  } else if(o==="contacts"){
+    const co=store.get("companies",rec.companyId);
+    related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
+  } else if(o==="projects"){
+    const co=store.get("companies",rec.companyId);
+    related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
+  } else if(o==="revenue"||o==="expenses"){
+    const co=store.get("companies",rec.companyId);
+    related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
+  } else if(o==="activities"){
+    const links=[["companies",rec.relCompanyId],["projects",rec.relProjectId]]
+      .map(([t,rid])=>store.get(t,rid)?{t,rec:store.get(t,rid)}:null).filter(Boolean);
+    related=links.length?`<div class="card"><div class="card-head"><h3>Linked records</h3></div><div class="rel-list">
+      ${links.map(l=>`<div class="rel" onclick="go('#/${l.t}/${l.rec.id}')">
+        <div class="avatar">${esc(initials(titleOf(l.t,l.rec)))}</div>
+        <div><div class="rel-name">${esc(titleOf(l.t,l.rec))}</div>
+             <div class="rel-sub">${esc(objDef(l.t).label)}</div></div>
+        <div class="spacer"></div><span style="color:var(--text-faint)">›</span></div>`).join("")}
+    </div></div>`:"";
+  }
+
+  const metaCells=[];
+  if(d.fields.some(f=>f.stage)) metaCells.push(`<div><div class="k">Stage</div>${stageBadge(rec.stage)}</div>`);
+  if(o==="projects") metaCells.push(`<div><div class="k">Status</div><div>${esc(rec.status||"—")}</div></div>`);
+  if(rec.amount!=null&&rec.amount!=="") metaCells.push(`<div><div class="k">Amount</div>
+    <div class="num ${o==="expenses"?"money-out":"money-in"}" style="font-weight:600">${fmtMoney(rec.amount)}</div></div>`);
+  if(rec.date) metaCells.push(`<div><div class="k">Date</div><div>${fmtDate(rec.date)}</div></div>`);
+  if(acts.length) metaCells.push(`<div><div class="k">Last activity</div><div>${fmtDate(acts[0].date)} · ${relTime(acts[0].date)}</div></div>`);
+
+  return `
+  <div class="detail-head">
+    <div class="crumb"><a href="#/${o}">${esc(d.plural)}</a> &nbsp;/&nbsp; ${esc(titleOf(o,rec))}</div>
+    <div class="detail-title">
+      <h2>${esc(titleOf(o,rec))}</h2>
+      <div class="spacer"></div>
+      <button class="btn btn-sm" onclick="openForm('${o}','${id}')">Edit</button>
+      ${(o==="companies"||o==="projects")?`<button class="btn btn-sm" onclick="openActivityFor('${o}','${id}')">+ Log activity</button>`:""}
+      <button class="btn btn-sm btn-danger" onclick="deleteRec('${o}','${id}')">Delete</button>
+    </div>
+    ${metaCells.length?`<div class="detail-meta">${metaCells.join("")}</div>`:""}
+  </div>
+
+  <div class="cols">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="card-head"><h3>Details</h3><div class="spacer"></div>
+          <button class="btn btn-sm btn-ghost" onclick="openForm('${o}','${id}')">Edit</button></div>
+        <div class="fieldgrid">
+          ${d.fields.filter(f=>!f.stage).map(f=>{
+            const v=cellValue(o,rec,f.key);
+            const isEmpty=/class="dim">—<|^$/.test(v);
+            return `<div class="f" ${f.full?'style="grid-column:1/-1"':""}>
+              <div class="k">${esc(f.label)}</div>
+              <div class="v ${isEmpty?"empty":""}">${isEmpty?"not set":v}</div></div>`;}).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      ${related}
+      ${(o==="companies"||o==="projects")?`
+      <div class="card">
+        <div class="card-head"><h3>Activity</h3><div class="spacer"></div>
+          <button class="btn btn-sm btn-ghost" onclick="openActivityFor('${o}','${id}')">+ Log</button></div>
+        ${acts.length?`<div class="timeline">${acts.map(a=>`
+          <div class="tl t-${actTone(a.kind)}">
+            <div class="th"><span class="tt">${esc(a.title)}</span><span class="td">${esc(fmtDate(a.date))}</span></div>
+            ${a.body?`<div class="tb">${esc(a.body)}</div>`:""}
+            <div class="tb" style="color:var(--text-faint)">${esc(a.kind||"")}</div>
+          </div>`).join("")}</div>`
+        :`<div class="empty-line">Nothing logged yet.</div>`}
+      </div>`:""}
+    </div>
+  </div>`;
+}
+
+function relCard(title,rows,obj,subFn){
+  return `<div class="card">
+    <div class="card-head"><h3>${esc(title)}</h3><div class="spacer"></div>
+      <span style="font-size:11px;color:var(--text-faint)">${rows.length}</span></div>
+    ${rows.length?`<div class="rel-list">${rows.map(r=>`
+      <div class="rel" onclick="go('#/${obj}/${r.id}')">
+        <div class="avatar">${esc(initials(titleOf(obj,r)))}</div>
+        <div><div class="rel-name">${esc(titleOf(obj,r))}</div>
+             <div class="rel-sub">${esc(subFn(r)||"")}</div></div>
+        <div class="spacer"></div><span style="color:var(--text-faint)">›</span>
+      </div>`).join("")}</div>`
+    :`<div class="empty-line">None linked.</div>`}
+  </div>`;
+}
+
+async function deleteRec(o,id){
+  if(!confirm("Delete this record? This can't be undone.")) return;
+  if(await store.remove(o,id)){ toast("Deleted"); go("#/"+o); render(); }
+}
+
+/* =========================== FORMS ======================================== */
+function fieldHtml(o,f,val){
+  const req=f.required?`<span class="req">*</span>`:"";
+  let input="";
+  if(f.stage){
+    input=`<select data-k="${f.key}">${CONFIG.stages.map(s=>
+      `<option value="${s.key}" ${val===s.key?"selected":""}>${esc(s.label)}</option>`).join("")}</select>`;
+  } else if(f.type==="select"){
+    input=`<select data-k="${f.key}"><option value="">—</option>${listOf(f).map(op=>
+      `<option value="${esc(op)}" ${val===op?"selected":""}>${esc(op)}</option>`).join("")}</select>`;
+  } else if(f.type==="relation"){
+    const opts=store.all(f.rel);
+    input=`<select data-k="${f.key}"><option value="">—</option>${opts.map(r=>
+      `<option value="${r.id}" ${val===r.id?"selected":""}>${esc(titleOf(f.rel,r))}</option>`).join("")}</select>`;
+  } else if(f.type==="datalist"){
+    const vals=[...new Set(store.all(o).map(r=>r[f.key]).filter(Boolean))].sort();
+    input=`<input data-k="${f.key}" list="dl_${f.key}" autocomplete="off" value="${esc(val||"")}">
+      <datalist id="dl_${f.key}">${vals.map(v=>`<option value="${esc(v)}"></option>`).join("")}</datalist>`;
+  } else if(f.type==="textarea"){ input=`<textarea data-k="${f.key}">${esc(val||"")}</textarea>`;
+  } else if(f.type==="bool"){
+    input=`<select data-k="${f.key}"><option value="">No</option><option value="1" ${val?"selected":""}>Yes</option></select>`;
+  } else {
+    const t=f.type==="date"?"date":f.type==="money"||f.type==="number"?"number":f.type==="email"?"email":"text";
+    const step=f.type==="money"?' step="0.01" min="0"':"";
+    input=`<input data-k="${f.key}" type="${t}"${step} value="${esc(val==null?"":val)}">`;
+  }
+  return `<div class="field ${f.full?"full":""}" data-field="${f.key}">
+    <label>${esc(f.label)} ${req}</label>${input}
+    <div class="err">Required</div></div>`;
+}
+
+function openForm(o,id,preset){
+  const d=objDef(o), rec=id?store.get(o,id):(preset||{});
+  if(!id&&!rec.date&&d.fields.some(f=>f.key==="date"))
+    rec.date=new Date().toISOString().slice(0,10);
+  $("#modalRoot").innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="modal-head"><h3>${id?"Edit":"Add a new"} ${esc(d.label)}</h3>
+        <div class="spacer"></div>
+        <button class="btn btn-sm btn-ghost" onclick="closeModal()">✕</button></div>
+      <div class="modal-body"><div class="form-grid" id="formGrid">
+        ${d.fields.map(f=>fieldHtml(o,f,rec[f.key])).join("")}
+      </div></div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveForm('${o}','${id||""}')">${id?"Save changes":"Add it"}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function openActivityFor(relType,relId){
+  const preset = relType==="companies" ? {relCompanyId:relId} : {relProjectId:relId};
+  openForm("activities","",preset);
+}
+
+async function saveForm(o,id){
+  const d=objDef(o), patch={}; let ok=true;
+  d.fields.forEach(f=>{
+    const wrap=document.querySelector(`[data-field="${f.key}"]`);
+    const el=wrap.querySelector("[data-k]");
+    let v;
+    if(f.type==="bool") v=!!el.value;
+    else if(f.type==="money"||f.type==="number") v=el.value===""?"":Number(el.value);
+    else v=el.value;
+    if(f.required&&(v===""||v==null)){ wrap.classList.add("invalid"); ok=false; }
+    else wrap.classList.remove("invalid");
+    patch[f.key]=v;
+  });
+  if(!ok){ toast("Fill the required fields","warn"); return; }
+  const btn=document.querySelector(".modal-foot .btn-primary");
+  if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+  if(id){
+    const r=await store.update(o,id,patch);
+    if(!r){ if(btn){btn.disabled=false;btn.textContent="Save changes";} return; }
+    toast("Saved","ok"); closeModal(); render();
+  } else {
+    const r=await store.create(o,patch);
+    if(!r){ if(btn){btn.disabled=false;btn.textContent="Add it";} return; }
+    toast(objDef(o).label+" added","ok"); closeModal();
+    if(o==="expenses"||o==="revenue"||o==="activities") render();
+    else { go(`#/${o}/${r.id}`); render(); }
+  }
+}
+function closeModal(){ $("#modalRoot").innerHTML=""; }
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){ closeModal(); closeSearch(); }
+  if(e.key==="/"&&document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){
+    e.preventDefault(); $("#globalSearch").focus();
+  }
+});
+
+/* ========================= GLOBAL SEARCH ================================== */
+function closeSearch(){ const r=$("#searchResults"); if(r) r.style.display="none"; }
+$("#globalSearch").addEventListener("input",function(){
+  const q=this.value.trim().toLowerCase();
+  const box=$("#searchResults");
+  if(q.length<2){ box.style.display="none"; return; }
+  let html="",hits=0;
+  CONFIG.nav.forEach(o=>{
+    const d=objDef(o);
+    const rows=store.all(o).filter(r=>JSON.stringify(r).toLowerCase().includes(q)).slice(0,5);
+    if(!rows.length) return;
+    hits+=rows.length;
+    html+=`<div class="sr-group">${esc(d.plural)}</div>`;
+    rows.forEach(r=>{
+      html+=`<div class="sr" onclick="go('#/${o}/${r.id}');document.getElementById('globalSearch').value='';closeSearch()">
+        <span class="ico">${d.icon||"·"}</span>${esc(titleOf(o,r))}
+        <small>${esc(r.stage?stageOf(r.stage).label:d.label)}</small></div>`;
+    });
+  });
+  box.innerHTML=hits?html:`<div class="search-empty">No matches for “${esc(this.value)}”.</div>`;
+  box.style.display="block";
+});
+document.addEventListener("click",e=>{ if(!e.target.closest(".search")) closeSearch(); });
+
+/* ============================ AUTH + BOOT ================================= */
+const gate=id=>document.getElementById(id);
+function gateMsg(text,kind){
+  const m=gate("gateMsg"); m.className="gate-msg show "+(kind||"");
+  m.innerHTML=text;
+}
+function showGate(){ gate("gate").style.display="flex"; document.getElementById("app").classList.remove("ready"); }
+function showApp(){ gate("gate").style.display="none"; document.getElementById("app").classList.add("ready"); }
+
+async function signOut(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  sessionEmail=""; store.db=EMPTY();
+  window.location.href = "/";
+}
+
+/* Both the app and the database check this. The database one is the real gate. */
+const isAllowed = e => ALLOWED.includes(String(e||"").trim().toLowerCase());
+
+async function enterApp(email){
+  sessionEmail=email;
+  gate("whoami").innerHTML="Signed in as<br><span style='opacity:.75'>"+esc(email)+"</span>";
+  try{
+    await store.loadAll();
+  }catch(e){
+    gate("gateRedirect").style.display="none";
+    gateMsg("Signed in, but the database refused the request. If you just changed the "
+           +"allow-list, check that <b>"+esc(email)+"</b> is in <code>allowed_emails</code>.","err");
+    showGate(); return;
+  }
+  showApp(); render();
+}
+
+async function startApp(createClient){
+  if(!CONFIGURED){
+    gate("gateRedirect").style.display="none";
+    gate("gateStep1").style.display="none";
+    gateMsg("<b>Not connected yet.</b> Open this file and paste your Supabase project URL and "
+           +"publishable key into <code>SUPABASE_URL</code> / <code>SUPABASE_KEY</code> near the "
+           +"top of the script. Step-by-step instructions are in SETUP.md.","err");
+    return;
+  }
+  sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  /* Sign-in lives on the homepage, so this page only ever checks the session it
+     was handed. Anything else — no session, an expired one, or an address that
+     isn't on the list — goes back to aflowgent.com with the login box open. The
+     database would refuse them anyway; this just avoids a second login screen. */
+  const {data:{session}} = await sb.auth.getSession();
+  if(session && isAllowed(session.user.email)){
+    await enterApp(session.user.email.toLowerCase());
+  } else {
+    if(session) { try{ await sb.auth.signOut(); }catch(e){} }
+    window.location.replace("/?login=1");
+    return;
+  }
+
+  gate("gateSend").onclick = async ()=>{
+    const email=gate("gateEmail").value.trim().toLowerCase();
+    if(!email){ gateMsg("Enter your email address.","err"); return; }
+    if(!isAllowed(email)){
+      gateMsg("That address doesn't have access. This CRM is limited to "
+             +ALLOWED.join(" and ")+".","err"); return;
+    }
+    const b=gate("gateSend"); b.disabled=true; b.textContent="Sending…";
+    /* shouldCreateUser:false — nobody can bring a new account into existence here */
+    const {error} = await sb.auth.signInWithOtp({email, options:{shouldCreateUser:false}});
+    b.disabled=false; b.textContent="Email me a code";
+    if(error){
+      gateMsg(/not found|signup/i.test(error.message)
+        ? "No account for that address yet. Add it under Auth → Users in Supabase."
+        : "Couldn't send the code — "+esc(error.message),"err");
+      return;
+    }
+    gate("gateSentTo").textContent=email;
+    gate("gateStep1").style.display="none";
+    gate("gateStep2").style.display="";
+    gateMsg("","" ); gate("gateMsg").className="gate-msg";
+    gate("gateCode").focus();
+  };
+
+  gate("gateVerify").onclick = async ()=>{
+    const email=gate("gateEmail").value.trim().toLowerCase();
+    const token=gate("gateCode").value.trim();
+    if(token.length<6){ gateMsg("Enter the 6-digit code from the email.","err"); return; }
+    const b=gate("gateVerify"); b.disabled=true; b.textContent="Checking…";
+    const {data,error} = await sb.auth.verifyOtp({email, token, type:"email"});
+    b.disabled=false; b.textContent="Sign in";
+    if(error){ gateMsg("That code didn't work — "+esc(error.message),"err"); return; }
+    if(!isAllowed(data.user.email)){ await sb.auth.signOut(); gateMsg("That address doesn't have access.","err"); return; }
+    await enterApp(data.user.email.toLowerCase());
+  };
+
+  gate("gateBack").onclick = ()=>{
+    gate("gateStep2").style.display="none"; gate("gateStep1").style.display="";
+    gate("gateCode").value=""; gate("gateMsg").className="gate-msg";
+  };
+  gate("gateCode").addEventListener("keydown",e=>{ if(e.key==="Enter") gate("gateVerify").click(); });
+  gate("gateEmail").addEventListener("keydown",e=>{ if(e.key==="Enter") gate("gateSend").click(); });
+}
+window.startApp = startApp;
+
+/* If the Supabase library never arrives (offline, blocked CDN), say so rather
+   than leaving a dead login button. */
+setTimeout(()=>{ if(!sb && CONFIGURED && !sessionEmail)
+  gateMsg("Still loading the sign-in library. If this doesn't clear, check your internet connection.","err");
+}, 6000);
+
+</script>
+
+<script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+  window.startApp(createClient);
+</script>
+</body>
+</html>
