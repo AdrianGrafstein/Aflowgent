@@ -1188,12 +1188,27 @@ const isAllowed = e => ALLOWED.includes(String(e||"").trim().toLowerCase());
 async function enterApp(email){
   sessionEmail=email;
   gate("whoami").innerHTML="Signed in as<br><span style='opacity:.75'>"+esc(email)+"</span>";
-  try{
-    await store.loadAll();
-  }catch(e){
+  /* A just-minted token is occasionally refused on the very first request —
+     clock skew between the auth server and the API is enough to do it. That is
+     transient, so retry once quietly before giving up: a half-second pause beats
+     a dead-end error screen. And if it really does fail, show the database's own
+     message rather than guessing at the allow-list, which sent us hunting
+     through a table that was never the problem. */
+  let loadErr = null;
+  for(let attempt = 0; attempt < 2; attempt++){
+    try{ await store.loadAll(); loadErr = null; break; }
+    catch(e){
+      loadErr = e;
+      if(attempt === 0) await new Promise(r=>setTimeout(r, 1200));
+    }
+  }
+  if(loadErr){
     gate("gateRedirect").style.display="none";
-    gateMsg("Signed in, but the database refused the request. If you just changed the "
-           +"allow-list, check that <b>"+esc(email)+"</b> is in <code>allowed_emails</code>.","err");
+    gateMsg("Signed in as <b>"+esc(email)+"</b>, but the database refused the request."
+           +"<br><span style='opacity:.75'>"+esc(loadErr.message || String(loadErr))+"</span>"
+           +"<br><br><span class='gate-back' onclick='location.reload()'>Try again</span>"
+           +" &nbsp;·&nbsp; if it keeps failing, check that this address is in "
+           +"<code>allowed_emails</code>.","err");
     showGate(); return;
   }
   showApp(); render();
