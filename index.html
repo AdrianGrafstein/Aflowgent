@@ -342,6 +342,60 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 .feed-row .co{color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .feed-row .amt{margin-left:auto;color:var(--done);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 @keyframes feedIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
+
+/* ---------- team login (nav link + OTP modal) ---------- */
+.nav-login{
+  font-size:14.5px;color:var(--muted);text-decoration:none;background:none;border:0;
+  font-family:var(--body);cursor:pointer;padding:0;margin-right:20px;transition:color .18s;
+}
+.nav-login:hover{color:var(--text)}
+@media(max-width:520px){.nav-login{display:none}}
+
+.lg-back{
+  position:fixed;inset:0;z-index:200;display:none;
+  align-items:center;justify-content:center;padding:24px;
+  background:rgba(3,5,10,.72);backdrop-filter:blur(8px);
+}
+.lg-back.open{display:flex}
+.lg{
+  width:100%;max-width:396px;background:linear-gradient(165deg,var(--panel),#0A0F1A);
+  border:1px solid var(--line-2);border-radius:var(--r);padding:30px 28px 26px;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.9);position:relative;
+  animation:lgIn .22s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes lgIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.lg-x{
+  position:absolute;top:12px;right:14px;background:none;border:0;cursor:pointer;
+  color:var(--muted-2);font-size:22px;line-height:1;padding:6px;transition:color .18s;
+}
+.lg-x:hover{color:var(--text)}
+.lg h3{font-size:23px;margin-bottom:8px}
+.lg .lg-sub{font-size:14px;color:var(--muted);line-height:1.55;margin-bottom:22px}
+.lg label{
+  display:block;font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted-2);margin-bottom:8px;
+}
+.lg input{
+  width:100%;background:rgba(6,9,16,.7);border:1px solid var(--line-2);border-radius:11px;
+  padding:13px 15px;color:var(--text);font-family:var(--body);font-size:16px;
+  transition:border-color .18s,box-shadow .18s;
+}
+.lg input:focus{outline:none;border-color:var(--running);box-shadow:0 0 0 3px rgba(245,165,36,.14)}
+.lg input#lgCode{
+  text-align:center;font-size:26px;letter-spacing:.5em;text-indent:.5em;font-weight:600;padding:14px 15px;
+}
+.lg .btn{width:100%;justify-content:center;margin-top:16px}
+.lg-alt{
+  display:block;width:100%;background:none;border:0;cursor:pointer;margin-top:14px;
+  font-family:var(--body);font-size:13.5px;color:var(--muted-2);transition:color .18s;
+}
+.lg-alt:hover{color:var(--muted)}
+.lg-msg{font-size:13.5px;line-height:1.5;margin-top:16px;padding:11px 13px;border-radius:10px;display:none}
+.lg-msg.on{display:block}
+.lg-msg.err{background:rgba(245,165,36,.09);border:1px solid rgba(245,165,36,.3);color:#F7C46B}
+.lg-msg.ok{background:rgba(63,221,160,.08);border:1px solid rgba(63,221,160,.28);color:var(--done)}
+.lg-foot{font-size:12px;color:var(--muted-2);margin-top:20px;padding-top:16px;border-top:1px solid var(--line);line-height:1.5}
+
 </style>
 </head>
 <body>
@@ -365,6 +419,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
       <a href="#process">Process</a>
       <a href="#pricing">Pricing</a>
     </div>
+    <button class="nav-login" type="button" data-login>Login</button>
     <a class="btn btn-primary btn-sm" href="#contact">Book a consultation</a>
   </div>
 </nav>
@@ -689,6 +744,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
       <a href="#work">Capabilities</a>
       <a href="#pricing">Pricing</a>
       <a href="#contact">Contact</a>
+      <a href="#" data-login>Team login</a>
     </div>
   </div>
 </footer>
@@ -1041,5 +1097,204 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 
 })();
 </script>
+
+<!-- ========== TEAM LOGIN (OTP) ==========
+     Opens from the "Login" link in the nav and the footer. A 6-digit code is
+     ALWAYS required — there is no password path anywhere in this flow.
+     Signing in successfully as sales@ or info@aflowgent.com goes to /dashboard.
+     Any other address is signed straight back out and left on the homepage.
+     The real lock is Row Level Security in Supabase, not this markup. -->
+<div class="lg-back" id="lgBack" role="dialog" aria-modal="true" aria-labelledby="lgTitle">
+  <div class="lg">
+    <button class="lg-x" id="lgClose" aria-label="Close">&times;</button>
+
+    <!-- step 1 — email -->
+    <div id="lgStep1">
+      <h3 id="lgTitle">Team login</h3>
+      <p class="lg-sub">Aflowgent staff only. We'll email you a 6-digit code — no password.</p>
+      <label for="lgEmail">Work email</label>
+      <input id="lgEmail" type="email" autocomplete="email" placeholder="you@aflowgent.com" spellcheck="false">
+      <button class="btn btn-primary" id="lgSend" type="button">Email me a code</button>
+    </div>
+
+    <!-- step 2 — code -->
+    <div id="lgStep2" style="display:none">
+      <h3>Enter your code</h3>
+      <p class="lg-sub">We sent a 6-digit code to <b id="lgSentTo"></b>. It expires in about an hour.</p>
+      <label for="lgCode">6-digit code</label>
+      <input id="lgCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <button class="btn btn-primary" id="lgVerify" type="button">Sign in</button>
+      <button class="lg-alt" id="lgBackBtn" type="button">← Use a different address</button>
+    </div>
+
+    <div class="lg-msg" id="lgMsg"></div>
+    <p class="lg-foot">This is the internal system login. Looking for a consultation? <a href="#contact" id="lgToContact" style="color:var(--muted)">Book one here.</a></p>
+  </div>
+</div>
+
+<script type="module">
+/* ===========================================================================
+   AFLOWGENT — team login (email + 6-digit code)
+   ---------------------------------------------------------------------------
+   Paste your Supabase project URL and PUBLISHABLE key below. The publishable
+   key is designed to sit in public client code — it grants nothing on its own,
+   because every table's RLS policy checks the signed-in email first. Never put
+   the service_role key here.
+   =========================================================================== */
+const SUPABASE_URL = "https://ttunjirntezbvsssnndd.supabase.co";
+const SUPABASE_KEY = "sb_publishable_jJLldw4WDDCBroq15Tw4pg_0ILRlgr9";
+
+/* Who is allowed past the door. Must match `allowed_emails` in the database. */
+const ALLOWED   = ["sales@aflowgent.com", "info@aflowgent.com"];
+const DASHBOARD = "/dashboard";
+
+const CONFIGURED = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_KEY.startsWith("PASTE_");
+const isAllowed  = e => ALLOWED.includes(String(e || "").trim().toLowerCase());
+
+const $ = id => document.getElementById(id);
+let sb = null, loading = null;
+
+/* The Supabase library is only fetched when someone actually opens the login
+   box, so a normal visitor never pays for it. */
+async function client(){
+  if (sb) return sb;
+  if (!loading) loading = import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm")
+    .then(m => (sb = m.createClient(SUPABASE_URL, SUPABASE_KEY)));
+  return loading;
+}
+
+function msg(html, kind){
+  const el = $("lgMsg");
+  el.innerHTML = html || "";
+  el.className = "lg-msg" + (html ? " on " + (kind || "") : "");
+}
+function step(n){
+  $("lgStep1").style.display = n === 1 ? "" : "none";
+  $("lgStep2").style.display = n === 2 ? "" : "none";
+}
+
+function openLogin(){
+  $("lgBack").classList.add("open");
+  document.body.style.overflow = "hidden";
+  setTimeout(() => $("lgEmail").focus(), 60);
+  if (!CONFIGURED){
+    msg("<b>Not connected yet.</b> Paste your Supabase project URL and publishable key "
+      + "into the login script near the bottom of <code>index.html</code>.", "err");
+  }
+  client().catch(() => {});   /* warm the library while they type */
+}
+function closeLogin(){
+  $("lgBack").classList.remove("open");
+  document.body.style.overflow = "";
+  step(1); msg(""); $("lgCode").value = "";
+}
+
+/* --- step 1: send the code -------------------------------------------------
+   No allow-list check happens here on purpose. Telling a stranger "that address
+   isn't valid" tells them which addresses ARE. Everyone sees the same reply;
+   only real accounts actually receive a code, because shouldCreateUser is false
+   so this can never bring a new account into existence. */
+async function sendCode(){
+  const email = $("lgEmail").value.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)){ msg("Enter a valid email address.", "err"); return; }
+  if (!CONFIGURED){ msg("Sign-in isn't connected yet.", "err"); return; }
+
+  const b = $("lgSend"); b.disabled = true; b.textContent = "Sending…";
+  try{
+    const c = await client();
+    const { error } = await c.auth.signInWithOtp({ email, options:{ shouldCreateUser:false } });
+    /* An "account doesn't exist" error is swallowed deliberately — see above.
+       Anything else (network, misconfiguration) is worth showing. */
+    if (error && !/not found|signup|not allowed|disabled/i.test(error.message)){
+      msg("Couldn't send the code — " + error.message, "err"); return;
+    }
+    $("lgSentTo").textContent = email;
+    step(2);
+    msg("If that address has access, a code is on its way.", "ok");
+    setTimeout(() => $("lgCode").focus(), 60);
+  }catch(e){
+    msg("Couldn't reach the sign-in service. Check your connection and try again.", "err");
+  }finally{
+    b.disabled = false; b.textContent = "Email me a code";
+  }
+}
+
+/* --- step 2: verify ------------------------------------------------------ */
+async function verifyCode(){
+  const email = $("lgEmail").value.trim().toLowerCase();
+  const token = $("lgCode").value.trim();
+  if (token.length < 6){ msg("Enter the 6-digit code from the email.", "err"); return; }
+
+  const b = $("lgVerify"); b.disabled = true; b.textContent = "Checking…";
+  try{
+    const c = await client();
+    const { data, error } = await c.auth.verifyOtp({ email, token, type:"email" });
+    if (error){ msg("That code didn't work — " + error.message, "err"); return; }
+
+    /* Verified, but not one of ours: end the session and put them back on the
+       public site. Nothing about /dashboard is revealed. */
+    if (!isAllowed(data.user.email)){
+      await c.auth.signOut();
+      closeLogin();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    b.textContent = "Opening…";
+    window.location.href = DASHBOARD;
+  }catch(e){
+    msg("Couldn't reach the sign-in service. Check your connection and try again.", "err");
+  }finally{
+    if (b.textContent === "Checking…"){ b.disabled = false; b.textContent = "Sign in"; }
+  }
+}
+
+/* --- wiring -------------------------------------------------------------- */
+document.querySelectorAll("[data-login]").forEach(el =>
+  el.addEventListener("click", e => { e.preventDefault(); openLogin(); }));
+
+$("lgClose").onclick    = closeLogin;
+$("lgSend").onclick     = sendCode;
+$("lgVerify").onclick   = verifyCode;
+$("lgToContact").onclick = closeLogin;
+$("lgBackBtn").onclick  = () => { step(1); msg(""); $("lgCode").value = ""; $("lgEmail").focus(); };
+$("lgBack").addEventListener("click", e => { if (e.target === $("lgBack")) closeLogin(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("lgBack").classList.contains("open")) closeLogin();
+});
+$("lgEmail").addEventListener("keydown", e => { if (e.key === "Enter") sendCode(); });
+$("lgCode").addEventListener("keydown",  e => { if (e.key === "Enter") verifyCode(); });
+$("lgCode").addEventListener("input", e => {
+  e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+  if (e.target.value.length === 6) verifyCode();
+});
+
+/* The dashboard sends people here as /?login=1 when they have no valid
+   session. Open the box for them and tidy the URL. */
+if (new URLSearchParams(location.search).get("login") === "1"){
+  openLogin();
+  history.replaceState(null, "", location.pathname + location.hash);
+}
+
+/* Already signed in from an earlier visit? Turn the nav link into a way back
+   into the dashboard. A stale session for anyone else is quietly dropped. */
+(async () => {
+  if (!CONFIGURED) return;
+  if (!localStorage.getItem("sb-" + (SUPABASE_URL.split("//")[1]||"").split(".")[0] + "-auth-token")) return;
+  try{
+    const c = await client();
+    const { data:{ session } } = await c.auth.getSession();
+    if (!session) return;
+    if (isAllowed(session.user.email)){
+      document.querySelectorAll("[data-login]").forEach(el => {
+        el.textContent = "Dashboard";
+        el.onclick = ev => { ev.preventDefault(); window.location.href = DASHBOARD; };
+      });
+    } else {
+      await c.auth.signOut();
+    }
+  }catch(e){}
+})();
+</script>
+
 </body>
 </html>
