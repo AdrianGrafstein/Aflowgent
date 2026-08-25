@@ -251,6 +251,31 @@ tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--sur
 .gate-foot{margin-top:30px;font-size:11.5px;color:var(--text-faint);line-height:1.7}
 .app{display:none}
 .app.ready{display:flex}
+
+/* ---------- projections ---------- */
+.chart-wrap{position:relative}
+.chart-legend{display:flex;gap:18px;margin-bottom:10px;flex-wrap:wrap}
+.chart-legend span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-dim)}
+.chart-legend i{width:9px;height:9px;border-radius:50%;display:block}
+.chart svg{display:block;width:100%;height:auto}
+.chart .grid{stroke:var(--border-soft);stroke-width:1}
+.chart .axis-txt{fill:var(--text-faint);font-size:10.5px;font-variant-numeric:tabular-nums;
+  font-family:var(--font)}
+.chart .end-lbl{fill:var(--text-dim);font-size:11.5px;font-family:var(--font)}
+.chart .cross{stroke:var(--text-faint);stroke-width:1;opacity:0;pointer-events:none}
+.chart .hit{fill:transparent;cursor:crosshair}
+.chart-tip{position:absolute;pointer-events:none;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;
+  font-size:12px;box-shadow:var(--shadow);display:none;z-index:5;white-space:nowrap}
+.chart-tip .tm{color:var(--text-faint);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:5px}
+.chart-tip .tr{display:flex;align-items:center;gap:7px;margin-top:3px}
+.chart-tip .tr i{width:8px;height:8px;border-radius:50%;display:block}
+.chart-tip .tr b{margin-left:auto;font-variant-numeric:tabular-nums;padding-left:14px}
+.proj-missing{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+.proj-missing a{font-size:12px;padding:4px 9px;border-radius:20px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text-dim);cursor:pointer}
+.proj-missing a:hover{border-color:var(--gold-soft);color:var(--text)}
 </style>
 </head>
 <body>
@@ -309,10 +334,6 @@ tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--sur
         <div id="searchResults" class="search-results" style="display:none"></div>
       </div>
       <div style="flex:1"></div>
-      <button class="btn btn-sm" onclick="refreshData()">Refresh</button>
-      <button class="btn btn-sm" onclick="exportData()">Export data</button>
-      <button class="btn btn-sm" onclick="document.getElementById('importFile').click()">Import data</button>
-      <input id="importFile" type="file" accept=".json,application/json" style="display:none">
     </div>
     <div class="content" id="view"></div>
   </div>
@@ -342,7 +363,8 @@ const CONFIG = {
     expenseCats:["Software & tools","Hosting & domains","Marketing","Hardware","Contractors","Travel","Other"],
     revenueTypes:["Monthly payment","Upfront build","One-time project","Other"],
     activityKinds:["Meeting","Call","Email","Proposal sent","Demo","Build milestone","Payment","Note"],
-    contactPrefs:["Email","Phone","Text","Any"]
+    contactPrefs:["Email","Phone","Text","Any"],
+    confidence:["10%","25%","50%","75%","90%"]
   },
 
   objects:{
@@ -360,6 +382,10 @@ const CONFIG = {
         {key:"monthlyFee", label:"Monthly fee ($)", type:"money"},
         {key:"clientSince",label:"Client since", type:"date"},
         {key:"source",     label:"How we found them", type:"text"},
+        {key:"projUpfront",label:"Projected upfront ($)", type:"money"},
+        {key:"projMonthly",label:"Projected monthly ($)", type:"money"},
+        {key:"confidence", label:"Confidence", type:"select", list:"confidence"},
+        {key:"expectedClose", label:"Expected close", type:"date"},
         {key:"notes",      label:"Notes", type:"textarea", full:true}
       ]
     },
@@ -455,7 +481,9 @@ let sb = null, sessionEmail = "";
 
 /* ---- camelCase in the app  <->  snake_case in Postgres ---- */
 const KEY_TO_DB = {
-  companies:{monthlyFee:"monthly_fee", clientSince:"client_since", nextStep:"next_step"},
+  companies:{monthlyFee:"monthly_fee", clientSince:"client_since", nextStep:"next_step",
+             projUpfront:"proj_upfront", projMonthly:"proj_monthly",
+             expectedClose:"expected_close"},
   contacts:{companyId:"company_id"},
   projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
             upfrontPrice:"upfront_price", monthlyPrice:"monthly_price"},
@@ -464,8 +492,9 @@ const KEY_TO_DB = {
   activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
 };
 const TABLES = ["companies","contacts","projects","expenses","revenue","activities"];
-const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price"]);
-const DATEY   = new Set(["client_since","date","start_date","due_date"]);
+const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price",
+                         "proj_upfront","proj_monthly"]);
+const DATEY   = new Set(["client_since","date","start_date","due_date","expected_close"]);
 
 function toDb(o,rec){
   const m=KEY_TO_DB[o]||{}, out={};
@@ -538,50 +567,11 @@ const store = {
   }
 };
 
-async function refreshData(){
-  try{ await store.loadAll(); render(); toast("Up to date","ok"); }
-  catch(e){ dbErr(e,"reload"); }
-}
-
-function exportData(){
-  const blob=new Blob([JSON.stringify(store.db,null,1)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  const d=new Date(), pad=n=>String(n).padStart(2,"0");
-  a.download=`aflowgent-crm-backup-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}.json`;
-  a.click(); URL.revokeObjectURL(a.href);
-  toast("Backup downloaded","ok");
-}
-document.getElementById("importFile").addEventListener("change",function(){
-  const f=this.files[0]; if(!f) return;
-  const r=new FileReader();
-  r.onload=async ()=>{
-    let d; try{ d=JSON.parse(r.result); if(!d||typeof d!=="object") throw 0; }
-    catch(e){ toast("That file isn't a valid backup","warn"); return; }
-    const total=TABLES.reduce((n,t)=>n+((d[t]||[]).length),0);
-    if(!total){ toast("Nothing in that file to import","warn"); return; }
-    if(!confirm(`Add ${total} records from this file into the database?\n\nThis ADDS to what's already there — it doesn't replace it.`)) return;
-    try{
-      /* companies first so contacts/projects/revenue can point at their new ids */
-      const idmap={};
-      for(const c of (d.companies||[])){
-        const {data,error}=await sb.from("companies").insert(toDb("companies",c)).select().single();
-        if(error) throw error; idmap[c.id]=data.id;
-      }
-      for(const t of ["contacts","projects","revenue","activities","expenses"]){
-        for(const row of (d[t]||[])){
-          const copy=Object.assign({},row);
-          ["companyId","relCompanyId"].forEach(k=>{ if(copy[k]&&idmap[copy[k]]) copy[k]=idmap[copy[k]]; });
-          if(copy.relProjectId) delete copy.relProjectId;   // project ids change on import
-          const {error}=await sb.from(t).insert(toDb(t,copy));
-          if(error) throw error;
-        }
-      }
-      await store.loadAll(); render(); toast("Imported "+total+" records","ok");
-    }catch(e){ dbErr(e,"import that file"); }
-  };
-  r.readAsText(f); this.value="";
-});
+/* Refresh / Export / Import used to live here. They were scaffolding for the
+   browser-only version, where the data lived in this page and could vanish with
+   it. Everything is in Postgres now: the database is the source of truth, and
+   Supabase takes its own backups. (The import path also used confirm(), which
+   blocks the page.) */
 
 /* =========================== helpers ====================================== */
 const $=s=>document.querySelector(s);
@@ -664,6 +654,7 @@ function parseHash(){
   const h=(location.hash||"#/").replace(/^#\/?/,"");
   const p=h.split("/").filter(Boolean);
   if(!p.length) return {view:"dashboard"};
+  if(p[0]==="projections") return {view:"projections"};
   if(CONFIG.objects[p[0]]) return p[1]?{view:"detail",obj:p[0],id:p[1]}:{view:"list",obj:p[0]};
   return {view:"dashboard"};
 }
@@ -673,6 +664,7 @@ function render(){
   const v=$("#view");
   const warn = "";
   if(route.view==="dashboard") v.innerHTML=warn+viewDashboard();
+  else if(route.view==="projections"){ v.innerHTML=warn+viewProjections(); bindChart(); }
   else if(route.view==="list") v.innerHTML=warn+viewList(route.obj);
   else v.innerHTML=warn+viewDetail(route.obj,route.id);
   window.scrollTo(0,0); bindListControls();
@@ -680,7 +672,10 @@ function render(){
 window.addEventListener("hashchange",render);
 
 function renderNav(){
+  const nProj=store.all("companies").filter(hasProjection).length;
   const items=[`<a href="#/" class="${route.view==="dashboard"?"active":""}"><span class="ico">◎</span>Dashboard</a>`,
+               `<a href="#/projections" class="${route.view==="projections"?"active":""}">
+                  <span class="ico">△</span>Projections<span class="count">${nProj||""}</span></a>`,
                `<div class="nav-label">Records</div>`];
   CONFIG.nav.forEach(k=>{
     const d=objDef(k); if(!d) return;
@@ -818,6 +813,220 @@ function viewDashboard(){
       </div>
     </div>
   </div>`;
+}
+
+/* ========================= PROJECTIONS =====================================
+   Deliberately separate from the Dashboard: nothing here feeds those numbers.
+   The Dashboard is money that exists; this is money that might.
+   =========================================================================== */
+const PIPE_STAGES = ["lead","proposal","building"];
+const CONF_DEFAULT = {lead:20, proposal:60, building:85};
+
+const hasProjection = c => PIPE_STAGES.includes(c.stage) &&
+  ((Number(c.projUpfront)||0) > 0 || (Number(c.projMonthly)||0) > 0);
+const confOf = c => c.confidence ? Number(String(c.confidence).replace("%",""))
+                                 : (CONF_DEFAULT[c.stage] ?? 50);
+const firstYear = c => (Number(c.projUpfront)||0) + (Number(c.projMonthly)||0)*12;
+/* What actually lands inside the next 12 calendar months — a deal closing in
+   month 4 only bills 8 months of retainer before the window ends. This is what
+   the chart plots, so every number on this page ties to the same maths. */
+const windowValue = c => (Number(c.projUpfront)||0)
+  + (Number(c.projMonthly)||0) * (12 - closeOffset(c));
+
+/* Which of the next 12 months does this deal land in? */
+function closeOffset(c){
+  if(!c.expectedClose) return 1;                       // no date entered → next month
+  const d=new Date(c.expectedClose+"T12:00:00"); if(isNaN(d)) return 1;
+  const n=today();
+  const off=(d.getFullYear()-n.getFullYear())*12 + (d.getMonth()-n.getMonth());
+  return Math.max(0, Math.min(11, off));
+}
+function monthLabels(){
+  const out=[], n=today();
+  for(let i=0;i<12;i++){ const d=new Date(n.getFullYear(), n.getMonth()+i, 1);
+    out.push(d.toLocaleDateString(CONFIG.app.locale,{month:"short"})
+      + (d.getMonth()===0 || i===0 ? " ’"+String(d.getFullYear()).slice(2) : "")); }
+  return out;
+}
+/* Cumulative revenue booked by month m: upfront lands once, monthly accrues. */
+function cumulative(list, weighted){
+  const out=[];
+  for(let m=0;m<12;m++){
+    let t=0;
+    list.forEach(c=>{
+      const off=closeOffset(c); if(off>m) return;
+      const w = weighted ? confOf(c)/100 : 1;
+      t += ((Number(c.projUpfront)||0) + (Number(c.projMonthly)||0)*(m-off+1)) * w;
+    });
+    out.push(Math.round(t));
+  }
+  return out;
+}
+function niceMax(v){
+  if(v<=0) return 1000;
+  const p=Math.pow(10,Math.floor(Math.log10(v))), n=v/p;
+  return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;
+}
+
+/* Inline SVG line chart. 2px marks, hairline solid grid, endpoint labels only,
+   crosshair + tooltip on hover, and the table below is the table view. */
+function projChart(series, labels){
+  const W=760,H=215,L=62,R=132,T=14,B=30;
+  const top=niceMax(Math.max(1,...series.flatMap(s=>s.values)));
+  const X=i=> L + i*(W-L-R)/(labels.length-1);
+  const Y=v=> T + (1-v/top)*(H-T-B);
+  const ticks=[0,.25,.5,.75,1].map(f=>f*top);
+
+  const grid=ticks.map(t=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"/>
+    <text class="axis-txt" x="${L-10}" y="${(Y(t)+3.5).toFixed(1)}" text-anchor="end">${esc(fmtMoney(t))}</text>`).join("");
+
+  const xlab=labels.map((l,i)=> (i%2===0||i===labels.length-1)
+    ? `<text class="axis-txt" x="${X(i).toFixed(1)}" y="${H-10}" text-anchor="middle">${esc(l)}</text>` : "").join("");
+
+  const paths=series.map(s=>{
+    const d=s.values.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round"/>`;
+  }).join("");
+
+  /* endpoint marker with a 2px surface ring, plus one direct label each */
+  const ends=series.map(s=>{
+    const i=labels.length-1, v=s.values[i];
+    return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="4.5" fill="${s.color}"
+             stroke="var(--surface)" stroke-width="2"/>`;
+  }).join("");
+  const endLabels=series.map((s,k)=>{
+    const i=labels.length-1, v=s.values[i];
+    let y=Y(v);
+    const other=Y(series[1-k] ? series[1-k].values[i] : v);
+    if(series.length>1 && Math.abs(y-other)<15) y += (s.values[i]>=(series[1-k].values[i]||0) ? -8 : 8);
+    return `<circle cx="${W-R+14}" cy="${(y-3.5).toFixed(1)}" r="4" fill="${s.color}"/>
+      <text class="end-lbl" x="${W-R+24}" y="${(y+1).toFixed(1)}">${esc(fmtMoney(s.values[i]))}</text>`;
+  }).join("");
+
+  const hits=labels.map((_,i)=>{
+    const w=(W-L-R)/(labels.length-1);
+    return `<rect class="hit" data-i="${i}" x="${(X(i)-w/2).toFixed(1)}" y="${T}" width="${w.toFixed(1)}" height="${H-T-B}"/>`;
+  }).join("");
+
+  const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join("");
+
+  return `<div class="chart-legend">${legend}</div>
+  <div class="chart-wrap chart">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Projected cumulative revenue over the next 12 months">
+      ${grid}${xlab}
+      <line class="cross" id="projCross" y1="${T}" y2="${H-B}"/>
+      ${paths}${ends}${endLabels}${hits}
+    </svg>
+    <div class="chart-tip" id="projTip"></div>
+  </div>`;
+}
+
+/* Wired after render: crosshair + tooltip. Values are also in the table below,
+   so the tooltip enhances rather than gates. */
+let CHART_STATE=null;
+function bindChart(){
+  if(!CHART_STATE) return;
+  const wrap=document.querySelector(".chart-wrap"); if(!wrap) return;
+  const svg=wrap.querySelector("svg"), tip=document.getElementById("projTip"),
+        cross=document.getElementById("projCross");
+  const {series,labels}=CHART_STATE;
+  wrap.querySelectorAll(".hit").forEach(r=>{
+    const show=()=>{
+      const i=+r.dataset.i;
+      const x=r.getAttribute("x")*1 + r.getAttribute("width")*1/2;
+      cross.setAttribute("x1",x); cross.setAttribute("x2",x); cross.style.opacity=".5";
+      tip.innerHTML=`<div class="tm">${esc(labels[i])}</div>`+
+        series.map(s=>`<div class="tr"><i style="background:${s.color}"></i>${esc(s.label)}<b>${esc(fmtMoney(s.values[i]))}</b></div>`).join("");
+      tip.style.display="block";
+      const box=svg.getBoundingClientRect(), px=x/760*box.width;
+      tip.style.left=Math.min(box.width-tip.offsetWidth-4, Math.max(0,px-tip.offsetWidth/2))+"px";
+      tip.style.top="4px";
+    };
+    r.addEventListener("mousemove",show);
+    r.addEventListener("mouseenter",show);
+    r.addEventListener("focus",show);
+    r.addEventListener("mouseleave",()=>{ tip.style.display="none"; cross.style.opacity="0"; });
+  });
+}
+
+function viewProjections(){
+  const cos=store.all("companies");
+  const deals=cos.filter(hasProjection);
+  const missing=cos.filter(c=>c.stage==="proposal" && !hasProjection(c));
+
+  const upfront=sum(deals,"projUpfront");
+  const monthly=sum(deals,"projMonthly");
+  const yr1=deals.reduce((s,c)=>s+windowValue(c),0);
+  const yr1w=deals.reduce((s,c)=>s+windowValue(c)*confOf(c)/100,0);
+  const currentMRR=sum(cos.filter(c=>c.stage==="active"),"monthlyFee");
+
+  const labels=monthLabels();
+  const series=[
+    {label:"If everything closes", color:"#B08A38", values:cumulative(deals,false)},
+    {label:"Weighted by confidence", color:"#8E7CC3", values:cumulative(deals,true)}
+  ];
+  CHART_STATE = deals.length ? {series,labels} : null;
+
+  const rows=deals.slice().sort((a,b)=>windowValue(b)-windowValue(a));
+
+  return `
+  <div class="page-head">
+    <div><h2>Projections</h2>
+      <div class="sub">${deals.length} open ${deals.length===1?"deal":"deals"} · next 12 months</div></div>
+  </div>
+
+  ${!deals.length?`<div class="table-wrap"><div class="empty">
+      <div class="e-ico">△</div>
+      <h4>No projections yet</h4>
+      <p>Open a company in your pipeline and fill in projected upfront and monthly.</p>
+      <button class="btn btn-primary" onclick="go('#/companies')">Go to Companies</button>
+    </div></div>`
+  :`
+  <div class="grid tiles" style="margin-bottom:16px">
+    <div class="tile accent-gold"><div class="k">Next 12 months</div>
+      <div class="v">${fmtMoney(yr1)}</div><div class="m">if everything closes</div></div>
+    <div class="tile accent-violet"><div class="k">Weighted</div>
+      <div class="v">${fmtMoney(Math.round(yr1w))}</div><div class="m">by confidence</div></div>
+    <div class="tile accent-mint"><div class="k">New monthly</div>
+      <div class="v">${fmtMoney(monthly)}</div>
+      <div class="m">${currentMRR?fmtMoney(currentMRR+monthly)+"/mo potential":"per month once live"}</div></div>
+    <div class="tile accent-amber"><div class="k">Upfront</div>
+      <div class="v">${fmtMoney(upfront)}</div><div class="m">one-time build fees</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head"><h3>Cumulative revenue · next 12 months</h3></div>
+    ${projChart(series,labels)}
+  </div>
+
+  <div class="table-wrap">
+    <table><thead><tr>
+      <th>Company</th><th>Stage</th><th>Confidence</th><th>Upfront</th>
+      <th>Monthly</th><th>Expected close</th><th>Next 12 months</th>
+    </tr></thead><tbody>
+      ${rows.map(c=>`<tr onclick="go('#/companies/${c.id}')">
+        <td><span class="strong">${esc(c.name)}</span></td>
+        <td>${stageBadge(c.stage)}</td>
+        <td><span class="num dim">${confOf(c)}%${c.confidence?"":" <span style='opacity:.6'>(default)</span>"}</span></td>
+        <td><span class="num">${c.projUpfront?fmtMoney(c.projUpfront):"—"}</span></td>
+        <td><span class="num">${c.projMonthly?fmtMoney(c.projMonthly):"—"}</span></td>
+        <td><span class="num dim">${c.expectedClose?fmtDate(c.expectedClose):"—"}</span></td>
+        <td><span class="num" style="color:var(--gold)">${fmtMoney(windowValue(c))}</span></td>
+      </tr>`).join("")}
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td>
+      <td><span class="num">${fmtMoney(upfront)}</span></td>
+      <td><span class="num">${fmtMoney(monthly)}</span></td><td></td>
+      <td><span class="num" style="color:var(--gold)">${fmtMoney(yr1)}</span></td>
+    </tr></tfoot></table>
+  </div>`}
+
+  ${missing.length?`<div class="card" style="margin-top:16px">
+    <div class="card-head"><h3>In proposal, no numbers yet</h3></div>
+    <div class="proj-missing">${missing.map(c=>
+      `<a onclick="go('#/companies/${c.id}')">${esc(c.name)}</a>`).join("")}</div>
+  </div>`:""}`;
 }
 
 /* ============================ LIST ======================================== */
