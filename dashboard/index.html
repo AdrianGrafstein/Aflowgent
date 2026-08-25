@@ -16,7 +16,7 @@
   the app says so instead of silently failing.
 
   ACCESS: only sales@aflowgent.com and info@aflowgent.com. Signing in happens on
-  the homepage (aflowgent.com → "Login"), which emails a 6-digit code. Reaching
+  the homepage (aflowgent.com → "Login"), which emails a one-time code. Reaching
   this page without a valid session bounces you straight back there. The real
   lock is Row Level Security in the database — the redirect is just the front
   door. Anyone else who lands here gets nothing, even with the public key.
@@ -267,7 +267,7 @@ tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--sur
 
     <div id="gateStep1" style="display:none">
       <h2>Sign in</h2>
-      <p class="lede">Enter your Aflowgent address and we'll email you a 6-digit code.</p>
+      <p class="lede">Enter your Aflowgent address and we'll email you a sign-in code.</p>
       <label for="gateEmail">Email</label>
       <input id="gateEmail" type="email" autocomplete="username" placeholder="you@aflowgent.com" spellcheck="false">
       <button class="btn btn-primary" id="gateSend">Email me a code</button>
@@ -275,9 +275,9 @@ tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--sur
 
     <div id="gateStep2" style="display:none">
       <h2>Check your inbox</h2>
-      <p class="lede">We sent a 6-digit code to <b id="gateSentTo"></b>. It expires in about an hour.</p>
-      <label for="gateCode">6-digit code</label>
-      <input id="gateCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <p class="lede">We sent a code to <b id="gateSentTo"></b>. It expires in about an hour.</p>
+      <label for="gateCode">Sign-in code</label>
+      <input id="gateCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="00000000">
       <button class="btn btn-primary" id="gateVerify">Sign in</button>
       <span class="gate-back" id="gateBack">← Use a different address</span>
     </div>
@@ -1250,7 +1250,7 @@ async function startApp(createClient){
   gate("gateVerify").onclick = async ()=>{
     const email=gate("gateEmail").value.trim().toLowerCase();
     const token=gate("gateCode").value.trim();
-    if(token.length<6){ gateMsg("Enter the 6-digit code from the email.","err"); return; }
+    if(token.length<6){ gateMsg("Enter the code from the email.","err"); return; }
     const b=gate("gateVerify"); b.disabled=true; b.textContent="Checking…";
     const {data,error} = await sb.auth.verifyOtp({email, token, type:"email"});
     b.disabled=false; b.textContent="Sign in";
