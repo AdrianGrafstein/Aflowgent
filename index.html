@@ -382,7 +382,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 }
 .lg input:focus{outline:none;border-color:var(--running);box-shadow:0 0 0 3px rgba(245,165,36,.14)}
 .lg input#lgCode{
-  text-align:center;font-size:26px;letter-spacing:.5em;text-indent:.5em;font-weight:600;padding:14px 15px;
+  text-align:center;font-size:23px;letter-spacing:.32em;text-indent:.32em;font-weight:600;padding:14px 12px;
 }
 .lg .btn{width:100%;justify-content:center;margin-top:16px}
 .lg-alt{
@@ -1099,7 +1099,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 </script>
 
 <!-- ========== TEAM LOGIN (OTP) ==========
-     Opens from the "Login" link in the nav and the footer. A 6-digit code is
+     Opens from the "Login" link in the nav and the footer. An emailed code is
      ALWAYS required — there is no password path anywhere in this flow.
      Signing in successfully as sales@ or info@aflowgent.com goes to /dashboard.
      Any other address is signed straight back out and left on the homepage.
@@ -1111,7 +1111,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
     <!-- step 1 — email -->
     <div id="lgStep1">
       <h3 id="lgTitle">Team login</h3>
-      <p class="lg-sub">Aflowgent staff only. We'll email you a 6-digit code — no password.</p>
+      <p class="lg-sub">Aflowgent staff only. We'll email you a sign-in code — no password.</p>
       <label for="lgEmail">Work email</label>
       <input id="lgEmail" type="email" autocomplete="email" placeholder="you@aflowgent.com" spellcheck="false">
       <button class="btn btn-primary" id="lgSend" type="button">Email me a code</button>
@@ -1120,9 +1120,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
     <!-- step 2 — code -->
     <div id="lgStep2" style="display:none">
       <h3>Enter your code</h3>
-      <p class="lg-sub">We sent a 6-digit code to <b id="lgSentTo"></b>. It expires in about an hour.</p>
-      <label for="lgCode">6-digit code</label>
-      <input id="lgCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <p class="lg-sub">We sent a code to <b id="lgSentTo"></b>. It expires in about an hour.</p>
+      <label for="lgCode">Sign-in code</label>
+      <input id="lgCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="00000000">
       <button class="btn btn-primary" id="lgVerify" type="button">Sign in</button>
       <button class="lg-alt" id="lgBackBtn" type="button">← Use a different address</button>
     </div>
@@ -1134,7 +1134,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 
 <script type="module">
 /* ===========================================================================
-   AFLOWGENT — team login (email + 6-digit code)
+   AFLOWGENT — team login (email + one-time code)
    ---------------------------------------------------------------------------
    Paste your Supabase project URL and PUBLISHABLE key below. The publishable
    key is designed to sit in public client code — it grants nothing on its own,
@@ -1223,7 +1223,7 @@ async function sendCode(){
 async function verifyCode(){
   const email = $("lgEmail").value.trim().toLowerCase();
   const token = $("lgCode").value.trim();
-  if (token.length < 6){ msg("Enter the 6-digit code from the email.", "err"); return; }
+  if (token.length < 6){ msg("Enter the code from the email.", "err"); return; }
 
   const b = $("lgVerify"); b.disabled = true; b.textContent = "Checking…";
   try{
@@ -1264,8 +1264,13 @@ document.addEventListener("keydown", e => {
 $("lgEmail").addEventListener("keydown", e => { if (e.key === "Enter") sendCode(); });
 $("lgCode").addEventListener("keydown",  e => { if (e.key === "Enter") verifyCode(); });
 $("lgCode").addEventListener("input", e => {
-  e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
-  if (e.target.value.length === 6) verifyCode();
+  /* Strip non-digits but DON'T cut the code short — Supabase's OTP length is a
+     server-side setting (currently 8) and hard-coding 6 here silently ate the
+     last two digits of a pasted code. Auto-submit only when the whole code
+     arrives at once via paste; otherwise wait for Enter or the button, so a
+     slow typist never fires a half-entered code. */
+  e.target.value = e.target.value.replace(/\D/g, "").slice(0, 10);
+  if (e.inputType === "insertFromPaste" && e.target.value.length >= 6) verifyCode();
 });
 
 /* The dashboard sends people here as /?login=1 when they have no valid
