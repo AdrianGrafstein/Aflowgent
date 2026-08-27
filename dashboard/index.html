@@ -141,6 +141,7 @@ tfoot td{font-weight:600;border-top:1px solid var(--border);background:var(--sur
 .badge-amber{color:var(--amber);background:rgba(217,164,65,.13);border-color:rgba(217,164,65,.28)}
 .badge-mint{color:var(--mint);background:rgba(123,196,154,.13);border-color:rgba(123,196,154,.28)}
 .badge-gold{color:var(--gold);background:rgba(198,164,92,.13);border-color:rgba(198,164,92,.28)}
+.badge-steel{color:#8FA8C8;background:rgba(143,168,200,.12);border-color:rgba(143,168,200,.28)}
 .badge-dim{color:var(--text-dim);background:var(--surface-3);border-color:var(--border)}
 .badge-danger{color:var(--danger);background:rgba(217,119,100,.13);border-color:rgba(217,119,100,.3)}
 .chip{display:inline-block;padding:2px 8px;border-radius:5px;background:var(--surface-3);border:1px solid var(--border);font-size:11.5px;color:var(--text-dim);margin:0 4px 4px 0}
@@ -351,11 +352,12 @@ const CONFIG = {
 
   /* Simpler than client builds, on purpose. */
   stages:[
-    { key:"lead",     label:"Lead",          tone:"violet", rank:1 },
-    { key:"proposal", label:"Proposal",      tone:"amber",  rank:2 },
-    { key:"building", label:"Building",      tone:"gold",   rank:3 },
-    { key:"active",   label:"Active client", tone:"mint",   rank:4 },
-    { key:"dormant",  label:"Dormant",       tone:"dim",    rank:0 }
+    { key:"lead",     label:"Lead",             tone:"violet", rank:1 },
+    { key:"proposal", label:"Proposal",         tone:"amber",  rank:2 },
+    { key:"pending",  label:"Pending approval", tone:"steel",  rank:3 },
+    { key:"building", label:"Building",         tone:"gold",   rank:4 },
+    { key:"active",   label:"Active client",    tone:"mint",   rank:5 },
+    { key:"dormant",  label:"Dormant",          tone:"dim",    rank:0 }
   ],
 
   lists:{
@@ -616,7 +618,7 @@ function expensesMonth(){ const k=thisMonthKey();
   return sum(store.all("expenses").filter(r=>monthKey(r.date)===k),"amount"); }
 
 function stageBadge(k){ const s=stageOf(k); return `<span class="badge badge-${s.tone}"><i></i>${esc(s.label)}</span>`; }
-function toneColor(t){ return {violet:"var(--violet)",amber:"var(--amber)",mint:"var(--mint)",gold:"var(--gold)",dim:"var(--surface-3)"}[t]||"var(--surface-3)"; }
+function toneColor(t){ return {violet:"var(--violet)",amber:"var(--amber)",steel:"#8FA8C8",mint:"var(--mint)",gold:"var(--gold)",dim:"var(--surface-3)"}[t]||"var(--surface-3)"; }
 function actTone(kind){
   if(kind==="Payment") return "mint";
   if(kind==="Email"||kind==="Call") return "violet";
@@ -700,7 +702,7 @@ function attentionItems(){
       out.push({t:p.name,r:`Target delivery (${fmtDate(p.dueDate)}) has passed`,tone:"danger",href:`#/projects/${p.id}`,sort:1000+dd});
   });
   store.all("companies").forEach(c=>{
-    if(!["lead","proposal"].includes(c.stage)) return;
+    if(!["lead","proposal","pending"].includes(c.stage)) return;
     const acts=store.activityFor("companies",c.id);
     const d=daysSince(acts[0]?acts[0].date:null);
     if(d===null||d>CONFIG.attention.staleLeadDays)
@@ -819,8 +821,8 @@ function viewDashboard(){
    Deliberately separate from the Dashboard: nothing here feeds those numbers.
    The Dashboard is money that exists; this is money that might.
    =========================================================================== */
-const PIPE_STAGES = ["lead","proposal","building"];
-const CONF_DEFAULT = {lead:20, proposal:60, building:85};
+const PIPE_STAGES = ["lead","proposal","pending","building"];
+const CONF_DEFAULT = {lead:20, proposal:60, pending:75, building:85};
 
 const hasProjection = c => PIPE_STAGES.includes(c.stage) &&
   ((Number(c.projUpfront)||0) > 0 || (Number(c.projMonthly)||0) > 0);
@@ -1161,8 +1163,9 @@ function viewDetail(o,id){
     const cts=store.all("contacts").filter(c=>c.companyId===id);
     const prs=store.all("projects").filter(p=>p.companyId===id);
     const rev=store.all("revenue").filter(r=>r.companyId===id);
+    const addP=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openProjectFor('${id}')">+ New</button>`;
     related=`${relCard("Contacts",cts,"contacts",c=>c.role||"")}
-             ${relCard("Projects",prs,"projects",p=>p.status||"")}
+             ${relCard("Projects",prs,"projects",p=>p.status||"",addP)}
              ${relCard("Revenue from this client",rev,"revenue",r=>`${fmtMoney(r.amount)} · ${fmtDate(r.date)}`)}`;
   } else if(o==="contacts"){
     const co=store.get("companies",rec.companyId);
@@ -1240,10 +1243,10 @@ function viewDetail(o,id){
   </div>`;
 }
 
-function relCard(title,rows,obj,subFn){
+function relCard(title,rows,obj,subFn,addBtn){
   return `<div class="card">
     <div class="card-head"><h3>${esc(title)}</h3><div class="spacer"></div>
-      <span style="font-size:11px;color:var(--text-faint)">${rows.length}</span></div>
+      <span style="font-size:11px;color:var(--text-faint)">${rows.length}</span>${addBtn||""}</div>
     ${rows.length?`<div class="rel-list">${rows.map(r=>`
       <div class="rel" onclick="go('#/${obj}/${r.id}')">
         <div class="avatar">${esc(initials(titleOf(obj,r)))}</div>
@@ -1312,9 +1315,14 @@ function openForm(o,id,preset){
   </div>`;
 }
 function openActivityFor(relType,relId){
+  /* Prefill the link, nothing more. Neither relation is required — an activity
+     can stand on its own, tied to a company, a project, both, or neither. */
   const preset = relType==="companies" ? {relCompanyId:relId} : {relProjectId:relId};
   openForm("activities","",preset);
 }
+/* A project can be started from any company at any stage — you might build a
+   proof-of-concept for a lead, or scope work while approval is pending. */
+function openProjectFor(companyId){ openForm("projects","",{companyId}); }
 
 async function saveForm(o,id){
   const d=objDef(o), patch={}; let ok=true;
