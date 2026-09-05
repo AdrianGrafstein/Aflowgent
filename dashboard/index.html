@@ -366,7 +366,8 @@ const CONFIG = {
     revenueTypes:["Monthly payment","Upfront build","One-time project","Other"],
     activityKinds:["Meeting","Call","Email","Proposal sent","Demo","Build milestone","Payment","Note"],
     contactPrefs:["Email","Phone","Text","Any"],
-    confidence:["10%","25%","50%","75%","90%"]
+    confidence:["10%","25%","50%","75%","90%"],
+    payMethods:["Zelle","Credit card","Check","ACH / bank transfer","Wire","Cash","Other"]
   },
 
   objects:{
@@ -443,6 +444,21 @@ const CONFIG = {
         {key:"notes",    label:"Notes", type:"textarea", full:true}
       ]
     },
+    invoices:{
+      label:"Invoice", plural:"Billing", icon:"◫", titleField:"name",
+      listColumns:["date","name","companyId","method","amount","paid"],
+      fields:[
+        {key:"name",     label:"What it's for", type:"text", required:true, full:true},
+        {key:"companyId",label:"Client", type:"relation", rel:"companies"},
+        {key:"method",   label:"Payment type", type:"select", list:"payMethods"},
+        {key:"amount",   label:"Amount billed ($)", type:"money", required:true},
+        {key:"date",     label:"Date billed", type:"date", required:true},
+        {key:"dueDate",  label:"Due", type:"date"},
+        {key:"paid",     label:"Paid", type:"bool"},
+        {key:"paidDate", label:"Paid on", type:"date"},
+        {key:"notes",    label:"Notes", type:"textarea", full:true}
+      ]
+    },
     activities:{
       label:"Activity", plural:"Activity", icon:"≡", titleField:"title",
       listColumns:["date","title","kind","relatedLabel"],
@@ -457,11 +473,11 @@ const CONFIG = {
     }
   },
 
-  nav:["companies","contacts","projects","expenses","revenue","activities"],
+  nav:["companies","contacts","projects","invoices","expenses","revenue","activities"],
   attention:{ staleProjectDays:14, staleLeadDays:7 }
 };
 
-const EMPTY = () => ({companies:[],contacts:[],projects:[],expenses:[],revenue:[],activities:[]});
+const EMPTY = () => ({companies:[],contacts:[],projects:[],invoices:[],expenses:[],revenue:[],activities:[]});
 
 
 
@@ -489,14 +505,15 @@ const KEY_TO_DB = {
   contacts:{companyId:"company_id"},
   projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
             upfrontPrice:"upfront_price", monthlyPrice:"monthly_price"},
+  invoices:{companyId:"company_id", dueDate:"due_date", paidDate:"paid_date"},
   expenses:{},
   revenue:{companyId:"company_id"},
   activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
 };
-const TABLES = ["companies","contacts","projects","expenses","revenue","activities"];
+const TABLES = ["companies","contacts","projects","invoices","expenses","revenue","activities"];
 const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price",
                          "proj_upfront","proj_monthly"]);
-const DATEY   = new Set(["client_since","date","start_date","due_date","expected_close"]);
+const DATEY   = new Set(["client_since","date","start_date","due_date","expected_close","paid_date"]);
 
 function toDb(o,rec){
   const m=KEY_TO_DB[o]||{}, out={};
@@ -582,6 +599,8 @@ const stageOf=k=>CONFIG.stages.find(s=>s.key===k)||{key:k,label:k||"—",tone:"d
 const listOf=f=>f.list?(CONFIG.lists[f.list]||[]):(f.options||[]);
 const objDef=o=>CONFIG.objects[o];
 const today=()=>new Date();
+const todayISO=()=>{ const d=today(), z=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
 
 function fmtDate(d){ if(!d) return "";
   const dt=new Date(d+(String(d).length===10?"T12:00:00":"")); if(isNaN(dt)) return d;
@@ -645,6 +664,11 @@ function cellValue(o,rec,key){
     return `<span class="num ${cls}">${fmtMoney(v)}</span>`;
   }
   if(f&&f.type==="date")  return `<span class="num dim">${v?fmtDate(v):"—"}</span>`;
+  if(o==="invoices"&&key==="paid")
+    return v?`<span class="badge badge-mint" style="cursor:pointer" title="Click to mark unpaid"
+                onclick="event.stopPropagation();togglePaid('${rec.id}')"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
+            :`<span class="badge badge-amber" style="cursor:pointer" title="Click to mark paid"
+                onclick="event.stopPropagation();togglePaid('${rec.id}')"><i></i>Unpaid</span>`;
   if(f&&f.type==="bool")  return v?`<span class="badge badge-mint"><i></i>Yes</span>`:`<span class="dim">No</span>`;
   return v?esc(v):`<span class="dim">—</span>`;
 }
@@ -1034,14 +1058,16 @@ function viewProjections(){
 /* ============================ LIST ======================================== */
 const DEFAULT_SORT={ companies:{sort:"stage",dir:-1},   // furthest along on top
                      expenses:{sort:"date",dir:-1}, revenue:{sort:"date",dir:-1},
+                     invoices:{sort:"date",dir:-1},
                      activities:{sort:"date",dir:-1}, projects:{sort:"dueDate",dir:1} };
 function viewList(o){
   const d=objDef(o);
-  const st=listState[o]=listState[o]||{q:"",stage:"",industry:"",...(DEFAULT_SORT[o]||{sort:d.listColumns[0],dir:1})};
+  const st=listState[o]=listState[o]||{q:"",stage:"",industry:"",paid:"",...(DEFAULT_SORT[o]||{sort:d.listColumns[0],dir:1})};
   let rows=store.all(o);
   if(st.q){ const q=st.q.toLowerCase(); rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); }
   if(st.stage) rows=rows.filter(r=>r.stage===st.stage);
   if(st.industry) rows=rows.filter(r=>r.industry===st.industry);
+  if(o==="invoices"&&st.paid) rows=rows.filter(r=>st.paid==="paid"?!!r.paid:!r.paid);
 
   const sortVal=(r,k)=>{
     const f=d.fields.find(f=>f.key===k);
@@ -1087,7 +1113,19 @@ function viewList(o){
       <div class="tile"><div class="k">Upfront builds</div><div class="v">${fmtMoney(upfront)||"$0"}</div><div class="m">one-time build fees</div></div>
     </div>`;
   }
-  const showFoot=(o==="expenses"||o==="revenue")&&rows.length;
+  if(o==="invoices"){
+    const all=store.all(o), unpaid=all.filter(i=>!i.paid);
+    const t=todayISO();
+    const overdue=unpaid.filter(i=>i.dueDate&&i.dueDate<t);
+    const paidMo=all.filter(i=>i.paid&&(i.paidDate||"").slice(0,7)===t.slice(0,7));
+    totalsHtml=`<div class="grid tiles" style="margin-bottom:14px">
+      <div class="tile accent-amber"><div class="k">Outstanding</div><div class="v">${fmtMoney(sum(unpaid,"amount"))||"$0"}</div><div class="m">${unpaid.length} unpaid invoice${unpaid.length===1?"":"s"}</div></div>
+      <div class="tile ${overdue.length?"accent-danger":""}"><div class="k">Past due</div><div class="v">${fmtMoney(sum(overdue,"amount"))||"$0"}</div><div class="m">${overdue.length?overdue.length+" overdue":"nothing overdue"}</div></div>
+      <div class="tile accent-mint"><div class="k">Collected this month</div><div class="v">${fmtMoney(sum(paidMo,"amount"))||"$0"}</div><div class="m">${esc(monthLabel())}</div></div>
+      <div class="tile"><div class="k">Billed · all time</div><div class="v">${fmtMoney(sum(all,"amount"))||"$0"}</div><div class="m">${all.length} invoice${all.length===1?"":"s"}</div></div>
+    </div>`;
+  }
+  const showFoot=(o==="expenses"||o==="revenue"||o==="invoices")&&rows.length;
   const amountIdx=cols.indexOf("amount");
 
   return `
@@ -1103,6 +1141,11 @@ function viewList(o){
     <input id="lq" type="text" placeholder="Filter ${esc(d.plural.toLowerCase())}…" value="${esc(st.q)}">
     ${hasStage?`<select id="lstage"><option value="">All stages</option>
       ${CONFIG.stages.map(s=>`<option value="${s.key}" ${st.stage===s.key?"selected":""}>${esc(s.label)}</option>`).join("")}
+    </select>`:""}
+    ${o==="invoices"?`<select id="lpaid">
+      <option value="">Paid & unpaid</option>
+      <option value="unpaid" ${st.paid==="unpaid"?"selected":""}>Unpaid only</option>
+      <option value="paid" ${st.paid==="paid"?"selected":""}>Paid only</option>
     </select>`:""}
     ${o==="companies"?`<select id="lindustry"><option value="">All industries</option>
       ${[...new Set(store.all("companies").map(c=>c.industry).filter(Boolean))].sort().map(v=>
@@ -1143,6 +1186,8 @@ function bindListControls(){
   if(s) s.onchange=()=>{ listState[route.obj].stage=s.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
   const ind=$("#lindustry");
   if(ind) ind.onchange=()=>{ listState[route.obj].industry=ind.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
+  const pd=$("#lpaid");
+  if(pd) pd.onchange=()=>{ listState[route.obj].paid=pd.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
   document.querySelectorAll("th[data-sort]").forEach(th=>{
     th.onclick=()=>{ const k=th.dataset.sort, st=listState[route.obj];
       if(st.sort===k) st.dir*=-1; else {st.sort=k;st.dir=1;}
@@ -1163,9 +1208,12 @@ function viewDetail(o,id){
     const cts=store.all("contacts").filter(c=>c.companyId===id);
     const prs=store.all("projects").filter(p=>p.companyId===id);
     const rev=store.all("revenue").filter(r=>r.companyId===id);
+    const invs=store.all("invoices").filter(i=>i.companyId===id);
     const addP=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openProjectFor('${id}')">+ New</button>`;
+    const addI=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openInvoiceFor('${id}')">+ New</button>`;
     related=`${relCard("Contacts",cts,"contacts",c=>c.role||"")}
              ${relCard("Projects",prs,"projects",p=>p.status||"",addP)}
+             ${relCard("Billing",invs,"invoices",i=>`${fmtMoney(i.amount)} · ${i.paid?"paid":"unpaid"}`,addI)}
              ${relCard("Revenue from this client",rev,"revenue",r=>`${fmtMoney(r.amount)} · ${fmtDate(r.date)}`)}`;
   } else if(o==="contacts"){
     const co=store.get("companies",rec.companyId);
@@ -1173,7 +1221,7 @@ function viewDetail(o,id){
   } else if(o==="projects"){
     const co=store.get("companies",rec.companyId);
     related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
-  } else if(o==="revenue"||o==="expenses"){
+  } else if(o==="revenue"||o==="expenses"||o==="invoices"){
     const co=store.get("companies",rec.companyId);
     related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
   } else if(o==="activities"){
@@ -1191,6 +1239,9 @@ function viewDetail(o,id){
   const metaCells=[];
   if(d.fields.some(f=>f.stage)) metaCells.push(`<div><div class="k">Stage</div>${stageBadge(rec.stage)}</div>`);
   if(o==="projects") metaCells.push(`<div><div class="k">Status</div><div>${esc(rec.status||"—")}</div></div>`);
+  if(o==="invoices") metaCells.push(`<div><div class="k">Status</div><div>${rec.paid
+    ?`<span class="badge badge-mint"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
+    :`<span class="badge badge-amber"><i></i>Unpaid${rec.dueDate&&rec.dueDate<todayISO()?" · past due":""}</span>`}</div></div>`);
   if(rec.amount!=null&&rec.amount!=="") metaCells.push(`<div><div class="k">Amount</div>
     <div class="num ${o==="expenses"?"money-out":"money-in"}" style="font-weight:600">${fmtMoney(rec.amount)}</div></div>`);
   if(rec.date) metaCells.push(`<div><div class="k">Date</div><div>${fmtDate(rec.date)}</div></div>`);
@@ -1203,6 +1254,9 @@ function viewDetail(o,id){
       <h2>${esc(titleOf(o,rec))}</h2>
       <div class="spacer"></div>
       <button class="btn btn-sm" onclick="openForm('${o}','${id}')">Edit</button>
+      ${o==="invoices"?(rec.paid
+        ?`<button class="btn btn-sm" onclick="togglePaid('${id}')">Mark unpaid</button>`
+        :`<button class="btn btn-sm btn-primary" onclick="togglePaid('${id}')">Mark as paid</button>`):""}
       ${(o==="companies"||o==="projects")?`<button class="btn btn-sm" onclick="openActivityFor('${o}','${id}')">+ Log activity</button>`:""}
       <button class="btn btn-sm btn-danger" onclick="deleteRec('${o}','${id}')">Delete</button>
     </div>
@@ -1323,6 +1377,18 @@ function openActivityFor(relType,relId){
 /* A project can be started from any company at any stage — you might build a
    proof-of-concept for a lead, or scope work while approval is pending. */
 function openProjectFor(companyId){ openForm("projects","",{companyId}); }
+function openInvoiceFor(companyId){ openForm("invoices","",{companyId}); }
+
+/* Billing is manual on purpose: nothing marks an invoice paid except this
+   click, made when the money actually shows up. Marking paid stamps today as
+   the paid date (editable afterwards); marking unpaid clears it. */
+async function togglePaid(id){
+  const inv=store.get("invoices",id); if(!inv) return;
+  const now=!inv.paid;
+  const iso=todayISO();
+  const r=await store.update("invoices",id,{paid:now, paidDate:now?iso:""});
+  if(r){ toast(now?"Marked paid — "+fmtMoney(inv.amount)+" in":"Marked unpaid","ok"); render(); }
+}
 
 async function saveForm(o,id){
   const d=objDef(o), patch={}; let ok=true;
