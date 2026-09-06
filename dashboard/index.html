@@ -1162,9 +1162,11 @@ function applyInvoiceDefaults(patch, id){
   keep("terms",         "");
 }
 
-/* AFG-YYYY-NNN, next in sequence for the current year. */
+/* AFG-YYYY-NNN, next in sequence for the current year. Numbering starts at
+   201 (a first invoice reading 001 advertises that it's the first). */
+const INVOICE_SEQ_START = 201;
 function nextInvoiceNo(){
-  const y=today().getFullYear(); let max=0;
+  const y=today().getFullYear(); let max=INVOICE_SEQ_START-1;
   store.all("invoices").forEach(i=>{ const m=/^AFG-(\d{4})-(\d+)$/i.exec(String(i.invoiceNo||"").trim());
     if(m&&+m[1]===y) max=Math.max(max,+m[2]); });
   return `AFG-${y}-${String(max+1).padStart(3,"0")}`;
