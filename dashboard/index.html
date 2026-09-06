@@ -449,25 +449,26 @@ const CONFIG = {
       listColumns:["date","invoiceNo","companyId","name","method","amount","paid"],
       /* One field per thing printed on the PDF. The template itself (layout,
          Zelle QR, footer) lives in invoiceHtml() below and never changes. */
+      /* auto:true fields are filled by applyInvoiceDefaults() when the invoice
+         is saved — they show on the record and print on the PDF, but you never
+         type them. See that function for the rules. */
       fields:[
-        {key:"invoiceNo",    label:"Invoice number", type:"text", required:true, hint:"AFG-2026-001"},
         {key:"companyId",    label:"Client (billed to)", type:"relation", rel:"companies", required:true},
         {key:"projectId",    label:"Project", type:"relation", rel:"projects", required:true},
-        {key:"name",         label:"Line item", type:"text", required:true, full:true,
-                             hint:"Client Re-Engagement Agent — monthly service"},
-        {key:"servicePeriod",label:"Service period", type:"text", hint:"September 2026"},
-        {key:"engagement",   label:"Engagement (under period)", type:"text",
-                             hint:"Client Re-Engagement Agent — Phase One (monthly)"},
-        {key:"qty",          label:"Qty", type:"number"},
         {key:"amount",       label:"Amount billed ($)", type:"money", required:true},
-        {key:"tax",          label:"Tax ($)", type:"money"},
         {key:"date",         label:"Issued", type:"date", required:true},
         {key:"dueDate",      label:"Due", type:"date"},
         {key:"method",       label:"Payment type", type:"select", list:"payMethods"},
         {key:"paid",         label:"Paid", type:"bool"},
         {key:"paidDate",     label:"Paid on", type:"date"},
-        {key:"terms",        label:"Terms (blank = standard wording)", type:"textarea", full:true},
-        {key:"notes",        label:"Internal notes (not printed)", type:"textarea", full:true}
+        {key:"notes",        label:"Internal notes (not printed)", type:"textarea", full:true},
+        {key:"invoiceNo",    label:"Invoice number", type:"text", auto:true},
+        {key:"name",         label:"Line item", type:"text", auto:true, full:true},
+        {key:"servicePeriod",label:"Service period", type:"text", auto:true},
+        {key:"engagement",   label:"Engagement", type:"text", auto:true},
+        {key:"qty",          label:"Qty", type:"number", auto:true},
+        {key:"tax",          label:"Tax ($)", type:"money", auto:true},
+        {key:"terms",        label:"Terms", type:"textarea", auto:true, full:true}
       ]
     },
     activities:{
@@ -1138,6 +1139,29 @@ function fmtMoney2(v){ const n=Number(v)||0;
   return (n<0?"-":"")+"$"+Math.abs(n).toLocaleString(CONFIG.app.locale,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 const invTotal = i => (Number(i.amount)||0) + (Number(i.tax)||0);
 
+/* Fill everything the form doesn't ask for. Values are stored on the record
+   at save time — an invoice must not silently change if a project is renamed
+   later — so on edit, anything already set is kept.
+     invoice number  AFG-YYYY-NNN, next in sequence for the year
+     line item       project name, + " — monthly service" if the project bills monthly
+     service period  the month the invoice is issued
+     engagement      project name, + " (monthly)" if it bills monthly
+     qty / tax       1 / 0
+     terms           blank → the template's standard wording */
+function applyInvoiceDefaults(patch, id){
+  const cur = id ? (store.get("invoices",id)||{}) : {};
+  const pr  = store.get("projects", patch.projectId);
+  const monthly = pr && Number(pr.monthlyPrice) > 0;
+  const keep = (k, v) => { patch[k] = (cur[k]!==undefined && cur[k]!=="" && cur[k]!==null) ? cur[k] : v; };
+  keep("invoiceNo",     nextInvoiceNo());
+  keep("name",          pr ? pr.name + (monthly ? " — monthly service" : "") : "");
+  keep("servicePeriod", monthOf(patch.date));
+  keep("engagement",    pr ? pr.name + (monthly ? " (monthly)" : "") : "");
+  keep("qty",           1);
+  keep("tax",           0);
+  keep("terms",         "");
+}
+
 /* AFG-YYYY-NNN, next in sequence for the current year. */
 function nextInvoiceNo(){
   const y=today().getFullYear(); let max=0;
@@ -1587,10 +1611,8 @@ function openForm(o,id,preset){
   if(!id&&!rec.date&&d.fields.some(f=>f.key==="date"))
     rec.date=todayISO();
   if(o==="invoices"&&!id){
-    if(!rec.invoiceNo) rec.invoiceNo=nextInvoiceNo();
-    if(!rec.dueDate)   rec.dueDate=rec.date;          // the Litili invoice was due on receipt
-    if(rec.qty==null||rec.qty==="") rec.qty=1;
-    if(!rec.method)    rec.method="Zelle";
+    if(!rec.dueDate) rec.dueDate=rec.date;            // the Litili invoice was due on receipt
+    if(!rec.method)  rec.method="Zelle";
   }
   $("#modalRoot").innerHTML=`
   <div class="overlay" onclick="if(event.target===this)closeModal()">
@@ -1599,7 +1621,7 @@ function openForm(o,id,preset){
         <div class="spacer"></div>
         <button class="btn btn-sm btn-ghost" onclick="closeModal()">✕</button></div>
       <div class="modal-body"><div class="form-grid" id="formGrid">
-        ${d.fields.map(f=>fieldHtml(o,f,rec[f.key])).join("")}
+        ${d.fields.filter(f=>!f.auto).map(f=>fieldHtml(o,f,rec[f.key])).join("")}
       </div></div>
       <div class="modal-foot">
         <button class="btn" onclick="closeModal()">Cancel</button>
@@ -1632,7 +1654,7 @@ async function togglePaid(id){
 
 async function saveForm(o,id){
   const d=objDef(o), patch={}; let ok=true;
-  d.fields.forEach(f=>{
+  d.fields.filter(f=>!f.auto).forEach(f=>{
     const wrap=document.querySelector(`[data-field="${f.key}"]`);
     const el=wrap.querySelector("[data-k]");
     let v;
@@ -1644,6 +1666,7 @@ async function saveForm(o,id){
     patch[f.key]=v;
   });
   if(!ok){ toast("Fill the required fields","warn"); return; }
+  if(o==="invoices") applyInvoiceDefaults(patch, id);
   const btn=document.querySelector(".modal-foot .btn-primary");
   if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
   if(id){
