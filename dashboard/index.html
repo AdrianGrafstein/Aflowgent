@@ -450,6 +450,7 @@ const CONFIG = {
       fields:[
         {key:"name",     label:"What it's for", type:"text", required:true, full:true},
         {key:"companyId",label:"Client", type:"relation", rel:"companies"},
+        {key:"projectId",label:"Project", type:"relation", rel:"projects", required:true},
         {key:"method",   label:"Payment type", type:"select", list:"payMethods"},
         {key:"amount",   label:"Amount billed ($)", type:"money", required:true},
         {key:"date",     label:"Date billed", type:"date", required:true},
@@ -505,7 +506,7 @@ const KEY_TO_DB = {
   contacts:{companyId:"company_id"},
   projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
             upfrontPrice:"upfront_price", monthlyPrice:"monthly_price"},
-  invoices:{companyId:"company_id", dueDate:"due_date", paidDate:"paid_date"},
+  invoices:{companyId:"company_id", projectId:"project_id", dueDate:"due_date", paidDate:"paid_date"},
   expenses:{},
   revenue:{companyId:"company_id"},
   activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
