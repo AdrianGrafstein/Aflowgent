@@ -363,7 +363,6 @@ const CONFIG = {
   lists:{
     projStatus:["In development","Live / delivered","Paused","Cancelled"],
     expenseCats:["Software & tools","Hosting & domains","Marketing","Hardware","Contractors","Travel","Other"],
-    revenueTypes:["Monthly payment","Upfront build","One-time project","Other"],
     activityKinds:["Meeting","Call","Email","Proposal sent","Demo","Build milestone","Payment","Note"],
     contactPrefs:["Email","Phone","Text","Any"],
     confidence:["10%","25%","50%","75%","90%"],
@@ -431,19 +430,6 @@ const CONFIG = {
         {key:"notes",    label:"Notes", type:"textarea", full:true}
       ]
     },
-    revenue:{
-      label:"Revenue entry", plural:"Revenue", icon:"△", titleField:"name",
-      listColumns:["date","name","companyId","type","renewal","amount"],
-      fields:[
-        {key:"name",     label:"Description", type:"text", required:true, full:true},
-        {key:"companyId",label:"From company", type:"relation", rel:"companies"},
-        {key:"type",     label:"Type", type:"select", list:"revenueTypes", required:true},
-        {key:"renewal",  label:"Renews", type:"select", options:["Monthly","Yearly","One-time"]},
-        {key:"amount",   label:"Amount ($)", type:"money", required:true},
-        {key:"date",     label:"Date received", type:"date", required:true},
-        {key:"notes",    label:"Notes", type:"textarea", full:true}
-      ]
-    },
     invoices:{
       label:"Invoice", plural:"Billing", icon:"◫", titleField:"invoiceNo",
       listColumns:["date","invoiceNo","companyId","name","method","amount","paid"],
@@ -485,11 +471,11 @@ const CONFIG = {
     }
   },
 
-  nav:["companies","contacts","projects","invoices","expenses","revenue","activities"],
+  nav:["companies","contacts","projects","invoices","expenses","activities"],
   attention:{ staleProjectDays:14, staleLeadDays:7 }
 };
 
-const EMPTY = () => ({companies:[],contacts:[],projects:[],invoices:[],expenses:[],revenue:[],activities:[]});
+const EMPTY = () => ({companies:[],contacts:[],projects:[],invoices:[],expenses:[],activities:[]});
 
 
 
@@ -520,10 +506,9 @@ const KEY_TO_DB = {
   invoices:{companyId:"company_id", projectId:"project_id", dueDate:"due_date", paidDate:"paid_date",
             invoiceNo:"invoice_no", servicePeriod:"service_period"},
   expenses:{},
-  revenue:{companyId:"company_id"},
   activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
 };
-const TABLES = ["companies","contacts","projects","invoices","expenses","revenue","activities"];
+const TABLES = ["companies","contacts","projects","invoices","expenses","activities"];
 const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price",
                          "proj_upfront","proj_monthly","qty","tax"]);
 const DATEY   = new Set(["client_since","date","start_date","due_date","expected_close","paid_date"]);
@@ -642,10 +627,15 @@ function monthLabel(){ return today().toLocaleDateString(CONFIG.app.locale,{mont
 function sum(arr,f){ return arr.reduce((s,x)=>s+(Number(f?x[f]:x)||0),0); }
 
 /* ------- money math: the dashboard reads these, the tabs write them ------- */
-function revenueAll(){ return sum(store.all("revenue"),"amount"); }
+/* Revenue is money that has actually arrived: paid invoices, counted on the
+   day they were marked paid (falling back to the issue date if that's blank).
+   Unpaid invoices are receivables — they live on the Billing tiles, not here. */
+const paidInvoices = () => store.all("invoices").filter(i=>i.paid);
+const paidOn = i => i.paidDate || i.date;
+function revenueAll(){ return paidInvoices().reduce((t,i)=>t+invTotal(i),0); }
 function expensesAll(){ return sum(store.all("expenses"),"amount"); }
 function revenueMonth(){ const k=thisMonthKey();
-  return sum(store.all("revenue").filter(r=>monthKey(r.date)===k),"amount"); }
+  return paidInvoices().filter(i=>monthKey(paidOn(i))===k).reduce((t,i)=>t+invTotal(i),0); }
 function expensesMonth(){ const k=thisMonthKey();
   return sum(store.all("expenses").filter(r=>monthKey(r.date)===k),"amount"); }
 
@@ -775,7 +765,8 @@ function viewDashboard(){
       <div class="v">${fmtMoney(profit)||"$0"}</div>
       <div class="m">${fmtMoney(revenueAll())||"$0"} in · ${fmtMoney(expensesAll())||"$0"} out</div></div>
     <div class="tile accent-mint"><div class="k">Revenue · ${esc(monthLabel())}</div>
-      <div class="v">${fmtMoney(revM)||"$0"}</div></div>
+      <div class="v">${fmtMoney(revM)||"$0"}</div>
+      <div class="m">${paidInvoices().filter(i=>monthKey(paidOn(i))===thisMonthKey()).length} invoice${paidInvoices().filter(i=>monthKey(paidOn(i))===thisMonthKey()).length===1?"":"s"} paid</div></div>
     <div class="tile accent-danger"><div class="k">Expenses · ${esc(monthLabel())}</div>
       <div class="v">${fmtMoney(expM)||"$0"}</div></div>
     <div class="tile accent-violet"><div class="k">Active clients</div>
@@ -1314,7 +1305,7 @@ function previewInvoice(id){
 
 /* ============================ LIST ======================================== */
 const DEFAULT_SORT={ companies:{sort:"stage",dir:-1},   // furthest along on top
-                     expenses:{sort:"date",dir:-1}, revenue:{sort:"date",dir:-1},
+                     expenses:{sort:"date",dir:-1},
                      invoices:{sort:"date",dir:-1},
                      activities:{sort:"date",dir:-1}, projects:{sort:"dueDate",dir:1} };
 function viewList(o){
@@ -1465,14 +1456,12 @@ function viewDetail(o,id){
   if(o==="companies"){
     const cts=store.all("contacts").filter(c=>c.companyId===id);
     const prs=store.all("projects").filter(p=>p.companyId===id);
-    const rev=store.all("revenue").filter(r=>r.companyId===id);
     const invs=store.all("invoices").filter(i=>i.companyId===id);
     const addP=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openProjectFor('${id}')">+ New</button>`;
     const addI=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openInvoiceFor('${id}')">+ New</button>`;
     related=`${relCard("Contacts",cts,"contacts",c=>c.role||"")}
              ${relCard("Projects",prs,"projects",p=>p.status||"",addP)}
-             ${relCard("Billing",invs,"invoices",i=>`${fmtMoney(i.amount)} · ${i.paid?"paid":"unpaid"}`,addI)}
-             ${relCard("Revenue from this client",rev,"revenue",r=>`${fmtMoney(r.amount)} · ${fmtDate(r.date)}`)}`;
+             ${relCard("Billing",invs,"invoices",i=>`${fmtMoney(invTotal(i))} · ${i.paid?"paid"+(i.paidDate?" "+fmtDate(i.paidDate):""):"unpaid"}`,addI)}`;
   } else if(o==="contacts"){
     const co=store.get("companies",rec.companyId);
     related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
@@ -1679,7 +1668,7 @@ async function saveForm(o,id){
     const r=await store.create(o,patch);
     if(!r){ if(btn){btn.disabled=false;btn.textContent="Add it";} return; }
     toast(objDef(o).label+" added","ok"); closeModal();
-    if(o==="expenses"||o==="revenue"||o==="activities") render();
+    if(o==="expenses"||o==="activities") render();
     else { go(`#/${o}/${r.id}`); render(); }
   }
 }
