@@ -234,6 +234,24 @@ em.acc{font-style:italic;color:var(--running)}
 .tier li{padding:10px 0;border-top:1px solid var(--line);display:flex;gap:11px}
 .tier li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--running);margin-top:8px;opacity:.7}
 .tier .btn{margin-top:auto;justify-content:center}
+/* single-offer layout: one wide custom card */
+.tiers-one{grid-template-columns:1fr}
+.tier-wide{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;padding:46px 46px 38px}
+.tier-wide:hover{transform:translateY(-3px)}
+@media(max-width:920px){.tier-wide{grid-template-columns:1fr;gap:26px;padding:36px 26px 30px}}
+.tier-wide .tier-main{display:flex;flex-direction:column}
+.tier-wide h3{font-size:clamp(24px,2.6vw,30px);line-height:1.18;margin-bottom:14px}
+.tier-wide .tier-for{font-size:16px;line-height:1.7;max-width:48ch}
+.tier-wide .tier-price{margin:26px 0 4px}
+.tier-wide .tier-note{font-size:13.5px;color:rgba(255,255,255,.72)}
+.tier-wide .btn{align-self:flex-start;margin-top:30px}
+.tier-wide .tier-side-lbl{font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.6);margin-bottom:6px}
+.tier-wide ul{margin:0;font-size:14.5px}
+.tier-wide li{padding:13px 0}
+.tier-wide li strong{color:var(--text);font-weight:600}
+.tier-wide .tier-incl{grid-column:1/-1;border-top:1px solid rgba(255,255,255,.16);padding-top:20px;
+  font-size:13.5px;color:rgba(255,255,255,.74)}
 
 /* ---------- contact ---------- */
 .contact{display:grid;grid-template-columns:1fr 1fr;gap:clamp(30px,5vw,66px);align-items:start}
@@ -655,54 +673,42 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
   <div class="wrap">
     <div class="rv">
       <span class="eyebrow">Pricing</span>
-      <h2 data-split>Flat monthly. No hourly billing.</h2>
+      <h2 data-split>Built around you. Priced the same way.</h2>
       <p class="lede" style="margin-top:24px">
-        Every plan includes hosting, monitoring, and fixes when something upstream breaks.
+        There's no package to pick. Every system we build is shaped around the workflows and
+        programs your business already runs on, so the scope, and the price, come from your
+        business rather than a menu.
       </p>
     </div>
 
-    <div class="tiers persp">
-      <div class="tier rv-turn">
-        <h3>Basic</h3>
-        <p class="tier-for">Your first intelligent system, built and run.</p>
-        <div class="tier-price"><span class="tier-was">$1,499</span>$999<small>/mo</small></div>
-        <span class="tier-save">Launch offer</span>
-        <ul>
-          <li>One live automation or agent</li>
-          <li>Monitoring, upkeep, and fixes</li>
-          <li>Monthly time-saved report</li>
-          <li>Email support</li>
-        </ul>
-        <a class="btn btn-ghost" href="#contact">Start here</a>
-      </div>
+    <div class="tiers tiers-one persp">
+      <div class="tier tier-featured tier-wide rv-turn">
+        <span class="tier-badge tier-badge-alt">Fully custom</span>
 
-      <div class="tier rv-turn rv-d1">
-        <span class="tier-badge">Best value</span>
-        <h3>Standard</h3>
-        <p class="tier-for">For teams ready to automate across the business.</p>
-        <div class="tier-price"><span class="tier-was">$3,499</span>$2,799<small>/mo</small></div>
-        <span class="tier-save">Launch offer</span>
-        <ul>
-          <li>Up to four live systems</li>
-          <li>A new build every month</li>
-          <li>Priority fixes, same business day</li>
-          <li>Monthly working session</li>
-        </ul>
-        <a class="btn btn-primary" href="#contact">Book a consultation</a>
-      </div>
+        <div class="tier-main">
+          <h3>Tailored down to the last detail</h3>
+          <p class="tier-for">We start by learning how your team actually works: who does what, which
+            tools hold your data, where the decisions get made. Then we build the system to fit
+            around all of it. Nothing new to migrate to, and nothing for your team to relearn.</p>
+          <div class="tier-price tier-price-sm">Quoted for your business</div>
+          <p class="tier-note">Scoped after we've seen how you work, never off a rate card.</p>
+          <a class="btn btn-primary" href="#contact">Book a consultation</a>
+        </div>
 
-      <div class="tier tier-featured rv-turn rv-d2">
-        <span class="tier-badge tier-badge-alt">Most popular</span>
-        <h3>Custom</h3>
-        <p class="tier-for">Not sure what's best for you? We will help.</p>
-        <div class="tier-price tier-price-sm">Pricing varies</div>
-        <ul>
-          <li>Unlimited systems in scope</li>
-          <li>Custom internal tools and copilots</li>
-          <li>Team training and handover docs</li>
-          <li>Quarterly roadmap</li>
-        </ul>
-        <a class="btn btn-ghost" href="#contact">Talk it through</a>
+        <div>
+          <div class="tier-side-lbl">What we tailor</div>
+          <ul>
+            <li><span><strong>Your workflows, step for step.</strong> Every approval, handoff, and exception, mapped the way it happens today.</span></li>
+            <li><span><strong>The programs you already use.</strong> Built into your CRM, inbox, accounting, and scheduling tools, not on top of new ones.</span></li>
+            <li><span><strong>Your language.</strong> Your stages, your fields, your names for things.</span></li>
+            <li><span><strong>Your voice.</strong> Anything sent on your behalf sounds like you wrote it.</span></li>
+            <li><span><strong>Your pace.</strong> A person approves every step until you're ready to let it run.</span></li>
+            <li><span><strong>Your scope.</strong> You pay for what your business needs, with nothing bundled in.</span></li>
+          </ul>
+        </div>
+
+        <p class="tier-incl">Every engagement includes hosting, monitoring, and fixes when something
+          upstream breaks, and you own everything we build.</p>
       </div>
     </div>
   </div>
