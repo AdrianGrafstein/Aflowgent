@@ -455,6 +455,7 @@ const CONFIG = {
         {key:"date",         label:"Issued", type:"date", required:true},
         {key:"dueDate",      label:"Due", type:"date"},
         {key:"method",       label:"Payment type", type:"select", list:"payMethods"},
+        {key:"splitLg",      label:"LG share of distributions (%)", type:"number", hint:"blank = project default"},
         {key:"paid",         label:"Paid", type:"bool"},
         {key:"paidDate",     label:"Paid on", type:"date"},
         {key:"notes",        label:"Internal notes (not printed)", type:"textarea", full:true},
@@ -526,7 +527,7 @@ const KEY_TO_DB = {
   projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
             upfrontPrice:"upfront_price", monthlyPrice:"monthly_price", splitLg:"split_lg"},
   invoices:{companyId:"company_id", projectId:"project_id", dueDate:"due_date", paidDate:"paid_date",
-            invoiceNo:"invoice_no", servicePeriod:"service_period"},
+            invoiceNo:"invoice_no", servicePeriod:"service_period", splitLg:"split_lg"},
   expenses:{},
   distributions:{projectId:"project_id"},
   activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"},
@@ -701,6 +702,12 @@ function expensesMonth(){ const k=thisMonthKey();
 const DEFAULT_SPLIT_LG = 30;
 function splitLgOf(pr){ const v=Number(pr&&pr.splitLg);
   return (pr&&pr.splitLg!==""&&pr.splitLg!=null&&isFinite(v)) ? Math.min(100,Math.max(0,v)) : DEFAULT_SPLIT_LG; }
+/* an invoice can override its project's split; blank means "use the project's" */
+function invoiceHasOwnSplit(inv){ return inv&&inv.splitLg!==""&&inv.splitLg!=null&&isFinite(Number(inv.splitLg)); }
+function splitLgOfInvoice(inv){
+  if(invoiceHasOwnSplit(inv)) return Math.min(100,Math.max(0,Number(inv.splitLg)));
+  return splitLgOf(store.get("projects",inv&&inv.projectId));
+}
 function retainPct(){ const v=Number(setting("distribution","retainPct",50)); return isFinite(v)?Math.min(100,Math.max(0,v)):50; }
 function retainTarget(){ return Number(setting("distribution","retainTarget",10000))||0; }
 
@@ -714,7 +721,7 @@ function monthSplit(k){
   let lg=0, ag=0;
   const lines=invs.map(i=>{
     const gross=invTotal(i), share=revenue>0?gross/revenue:0, net=rest*share;
-    const pr=store.get("projects",i.projectId), sLg=splitLgOf(pr)/100;
+    const pr=store.get("projects",i.projectId), sLg=splitLgOfInvoice(i)/100;
     const l=net*sLg, a=net-l; lg+=l; ag+=a;
     return {inv:i, project:pr, gross, net, lg:l, ag:a, splitLg:sLg*100};
   });
@@ -743,7 +750,7 @@ function splitTotals(months){
 }
 /* what one invoice would hand out on its own, before the month's expenses */
 function invoiceSplit(inv){
-  const pr=store.get("projects",inv.projectId), sLg=splitLgOf(pr)/100;
+  const sLg=splitLgOfInvoice(inv)/100;
   const gross=invTotal(inv), kept=gross*retainPct()/100, rest=gross-kept;
   return {gross, kept, lg:rest*sLg, ag:rest*(1-sLg), splitLg:sLg*100};
 }
@@ -782,6 +789,8 @@ function cellValue(o,rec,key){
   if(o==="expenses"&&key==="kind") return v===EXP_PERSONAL
     ?`<span class="badge badge-amber"><i></i>Personal business</span>`:`<span class="badge badge-steel"><i></i>Business</span>`;
   if(o==="projects"&&key==="splitLg"){ const l=splitLgOf(rec); return `<span class="num">LG ${l}% · AG ${100-l}%</span>`; }
+  if(o==="invoices"&&key==="splitLg"){ const l=splitLgOfInvoice(rec);
+    return `<span class="num">LG ${l}% · AG ${100-l}%</span> <span class="dim" style="font-size:11px">${invoiceHasOwnSplit(rec)?"custom for this invoice":"project default"}</span>`; }
   if(o==="invoices"&&key==="paid")
     return v?`<span class="badge badge-mint" style="cursor:pointer" title="Click to mark unpaid"
                 onclick="event.stopPropagation();togglePaid('${rec.id}')"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
@@ -1017,7 +1026,7 @@ function viewDistributions(){
   months.forEach(m=>m.lines.forEach(l=>{
     const id=l.project?l.project.id:"none";
     const b=byProject[id]=byProject[id]||{project:l.project,revenue:0,lg:0,ag:0,paidLG:0,paidAG:0,splitLg:l.splitLg};
-    b.revenue+=l.gross; b.lg+=l.lg; b.ag+=l.ag;
+    b.revenue+=l.gross; b.lg+=l.lg; b.ag+=l.ag; if(invoiceHasOwnSplit(l.inv)) b.custom=(b.custom||0)+1;
   }));
   log.forEach(d=>{ const id=d.projectId&&store.get("projects",d.projectId)?d.projectId:"none";
     const b=byProject[id]=byProject[id]||{project:store.get("projects",id),revenue:0,lg:0,ag:0,paidLG:0,paidAG:0,splitLg:null};
@@ -1081,7 +1090,7 @@ function viewDistributions(){
         <thead><tr><th>Project</th><th>Split</th><th>Paid revenue</th><th>LG share</th><th>AG share</th><th>Paid out</th></tr></thead>
         <tbody>${projRows.map(b=>`<tr ${b.project?`onclick="go('#/projects/${b.project.id}')"`:""}>
           <td><span class="strong">${b.project?esc(b.project.name):"(no project)"}</span></td>
-          <td><span class="num dim">${b.project?`${splitLgOf(b.project)} / ${100-splitLgOf(b.project)}`:"—"}</span></td>
+          <td><span class="num dim">${b.project?`${splitLgOf(b.project)} / ${100-splitLgOf(b.project)}`:"—"}${b.custom?`<div style="font-size:11px">${b.custom} invoice${b.custom===1?"":"s"} custom</div>`:""}</span></td>
           <td><span class="num money-in">${fmtMoney(b.revenue)||"$0"}</span></td>
           <td><span class="num" style="color:var(--violet)">${fmtMoney(b.lg)||"$0"}</span></td>
           <td><span class="num" style="color:var(--amber)">${fmtMoney(b.ag)||"$0"}</span></td>
@@ -1783,7 +1792,7 @@ function viewDetail(o,id){
   if(o==="invoices"){ const sp=invoiceSplit(rec), pr=store.get("projects",rec.projectId);
     metaCells.push(`<div><div class="k">Split${rec.paid?"":" when paid"}</div><div class="num" style="font-size:12.5px">
       <span style="color:var(--gold)">kept ${fmtMoney(sp.kept)}</span> · <span style="color:var(--violet)">LG ${fmtMoney(sp.lg)}</span> · <span style="color:var(--amber)">AG ${fmtMoney(sp.ag)}</span>
-      <div class="dim" style="font-size:11px">${sp.splitLg}/${100-sp.splitLg} from ${pr?esc(pr.name):"project"} · before the month's expenses</div></div></div>`); }
+      <div class="dim" style="font-size:11px">${sp.splitLg}/${100-sp.splitLg} ${invoiceHasOwnSplit(rec)?"set on this invoice":"from "+(pr?esc(pr.name):"the project")} · before the month's expenses</div></div></div>`); }
   if(o==="invoices") metaCells.push(`<div><div class="k">Status</div><div>${rec.paid
     ?`<span class="badge badge-mint"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
     :`<span class="badge badge-amber"><i></i>Unpaid${rec.dueDate&&rec.dueDate<todayISO()?" · past due":""}</span>`}</div></div>`);
