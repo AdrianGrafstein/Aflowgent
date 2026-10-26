@@ -107,6 +107,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .tile.accent-amber .v{color:var(--amber)}
 .tile.accent-mint .v{color:var(--mint)}
 .tile.accent-danger .v{color:var(--danger)}
+.tile input[type=number]{background:var(--surface-3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font:inherit;font-size:12px}
 
 .stagebar{display:flex;gap:3px;height:9px;border-radius:5px;overflow:hidden;margin-bottom:12px}
 .stagebar span{display:block;transition:width .3s}
@@ -366,7 +367,13 @@ const CONFIG = {
     activityKinds:["Meeting","Call","Email","Proposal sent","Demo","Build milestone","Payment","Note"],
     contactPrefs:["Email","Phone","Text","Any"],
     confidence:["10%","25%","50%","75%","90%"],
-    payMethods:["Zelle","Credit card","Check","ACH / bank transfer","Wire","Cash","Other"]
+    payMethods:["Zelle","Credit card","Check","ACH / bank transfer","Wire","Cash","Other"],
+    /* Business = approved business expense (Claude, Supabase, Vercel…) — reduces profit.
+       Personal business = a partner's own business spend (a client dinner) — comes out
+       of that partner's distribution, not out of profit. */
+    expenseKinds:["Business","Personal business"],
+    cards:["LG Aflowgent VISA","AG Aflowgent VISA"],
+    partners:["LG","AG"]
   },
 
   objects:{
@@ -415,14 +422,17 @@ const CONFIG = {
         {key:"dueDate",     label:"Target delivery", type:"date"},
         {key:"upfrontPrice",label:"Upfront price ($)", type:"money"},
         {key:"monthlyPrice",label:"Monthly price ($)", type:"money"},
+        {key:"splitLg",     label:"LG share of distributions (%)", type:"number", hint:"30"},
         {key:"description", label:"Description", type:"textarea", full:true}
       ]
     },
     expenses:{
       label:"Expense", plural:"Expenses", icon:"▽", titleField:"name",
-      listColumns:["date","name","category","renewal","amount"],
+      listColumns:["date","name","kind","card","category","amount"],
       fields:[
         {key:"name",     label:"What was it", type:"text", required:true, full:true},
+        {key:"kind",     label:"Expense type", type:"select", list:"expenseKinds", required:true},
+        {key:"card",     label:"Billed to", type:"select", list:"cards"},
         {key:"category", label:"Category", type:"select", list:"expenseCats"},
         {key:"amount",   label:"Amount ($)", type:"money", required:true},
         {key:"date",     label:"Date", type:"date", required:true},
@@ -457,6 +467,18 @@ const CONFIG = {
         {key:"terms",        label:"Terms", type:"textarea", auto:true, full:true}
       ]
     },
+    distributions:{
+      label:"Distribution", plural:"Distributions", icon:"⇄", titleField:"label",
+      listColumns:["date","partner","period","projectId","amount"],
+      fields:[
+        {key:"partner",  label:"Paid to", type:"select", list:"partners", required:true},
+        {key:"amount",   label:"Amount transferred ($)", type:"money", required:true},
+        {key:"date",     label:"Transfer date", type:"date", required:true},
+        {key:"period",   label:"Covers month", type:"month", required:true},
+        {key:"projectId",label:"Project", type:"relation", rel:"projects"},
+        {key:"notes",    label:"Notes", type:"textarea", full:true}
+      ]
+    },
     activities:{
       label:"Activity", plural:"Activity", icon:"≡", titleField:"title",
       listColumns:["date","title","kind","relatedLabel"],
@@ -471,11 +493,11 @@ const CONFIG = {
     }
   },
 
-  nav:["companies","contacts","projects","invoices","expenses","activities"],
+  nav:["companies","contacts","projects","invoices","expenses","distributions","activities"],
   attention:{ staleProjectDays:14, staleLeadDays:7 }
 };
 
-const EMPTY = () => ({companies:[],contacts:[],projects:[],invoices:[],expenses:[],activities:[]});
+const EMPTY = () => ({companies:[],contacts:[],projects:[],invoices:[],expenses:[],distributions:[],activities:[],settings:[]});
 
 
 
@@ -502,16 +524,19 @@ const KEY_TO_DB = {
              expectedClose:"expected_close"},
   contacts:{companyId:"company_id"},
   projects:{companyId:"company_id", startDate:"start_date", dueDate:"due_date",
-            upfrontPrice:"upfront_price", monthlyPrice:"monthly_price"},
+            upfrontPrice:"upfront_price", monthlyPrice:"monthly_price", splitLg:"split_lg"},
   invoices:{companyId:"company_id", projectId:"project_id", dueDate:"due_date", paidDate:"paid_date",
             invoiceNo:"invoice_no", servicePeriod:"service_period"},
   expenses:{},
-  activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"}
+  distributions:{projectId:"project_id"},
+  activities:{relCompanyId:"rel_company_id", relProjectId:"rel_project_id"},
+  settings:{}
 };
-const TABLES = ["companies","contacts","projects","invoices","expenses","activities"];
+const TABLES = ["companies","contacts","projects","invoices","expenses","distributions","activities","settings"];
 const NUMERIC = new Set(["monthly_fee","amount","upfront_price","monthly_price",
-                         "proj_upfront","proj_monthly","qty","tax"]);
+                         "proj_upfront","proj_monthly","qty","tax","split_lg"]);
 const DATEY   = new Set(["client_since","date","start_date","due_date","expected_close","paid_date"]);
+const UUIDY   = new Set(["company_id","project_id","rel_company_id","rel_project_id"]);
 
 function toDb(o,rec){
   const m=KEY_TO_DB[o]||{}, out={};
@@ -519,7 +544,7 @@ function toDb(o,rec){
     if(k==="id"||k==="recurring"||v===undefined) return;
     const dk=m[k]||k;
     /* Postgres rejects "" for numeric and date columns — send null instead */
-    out[dk] = ((NUMERIC.has(dk)||DATEY.has(dk)) && (v===""||v===null)) ? null : v;
+    out[dk] = ((NUMERIC.has(dk)||DATEY.has(dk)||UUIDY.has(dk)) && (v===""||v===null)) ? null : v;
   });
   return out;
 }
@@ -584,6 +609,18 @@ const store = {
   }
 };
 
+/* ---- settings: one jsonb row per key, read through setting(), saved whole ---- */
+function settingRow(key){ return (store.db.settings||[]).find(r=>r.key===key) || null; }
+function setting(key,field,def){ const r=settingRow(key); const v=r&&r.value?r.value[field]:undefined;
+  return (v===undefined||v===null||v==="") ? def : v; }
+async function saveSetting(key,patch){
+  const cur=settingRow(key); const value={...(cur&&cur.value||{}),...patch};
+  const {data,error}=await sb.from("settings").upsert({key,value}).select().single();
+  if(error){ dbErr(error,"save settings"); return null; }
+  if(cur) cur.value=data.value; else store.db.settings.push({key,value:data.value});
+  return data.value;
+}
+
 /* Refresh / Export / Import used to live here. They were scaffolding for the
    browser-only version, where the data lived in this page and could vanish with
    it. Everything is in Postgres now: the database is the source of truth, and
@@ -614,7 +651,11 @@ function relTime(d){ const n=daysSince(d);
   if(n===1) return "yesterday"; if(n<30) return n+"d ago"; if(n<365) return Math.round(n/30)+"mo ago";
   return Math.round(n/365)+"y ago"; }
 function initials(n){ return String(n||"?").split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase(); }
-function titleOf(o,rec){ if(!rec) return "—"; return rec[objDef(o).titleField]||"(untitled)"; }
+function titleOf(o,rec){ if(!rec) return "—";
+  if(o==="distributions") return `${rec.partner||"?"} · ${fmtMoney(rec.amount)||"$0"} · ${periodLabel(rec.period)}`;
+  return rec[objDef(o).titleField]||"(untitled)"; }
+function periodLabel(k){ if(!k) return "—"; const d=new Date(k+"-01T12:00:00"); if(isNaN(d)) return k;
+  return d.toLocaleDateString(CONFIG.app.locale,{month:"short",year:"numeric"}); }
 function toast(msg,kind){
   const el=document.createElement("div"); el.className="toast "+(kind||""); el.textContent=msg;
   $("#toasts").appendChild(el);
@@ -632,12 +673,81 @@ function sum(arr,f){ return arr.reduce((s,x)=>s+(Number(f?x[f]:x)||0),0); }
    Unpaid invoices are receivables — they live on the Billing tiles, not here. */
 const paidInvoices = () => store.all("invoices").filter(i=>i.paid);
 const paidOn = i => i.paidDate || i.date;
+/* Business expenses reduce profit. Personal business expenses belong to the
+   partner whose card they went on, and come out of that partner's share. */
+const EXP_BUSINESS="Business", EXP_PERSONAL="Personal business";
+const expKind = e => e.kind || EXP_BUSINESS;
+const bizExpenses = () => store.all("expenses").filter(e=>expKind(e)!==EXP_PERSONAL);
+const personalExpenses = () => store.all("expenses").filter(e=>expKind(e)===EXP_PERSONAL);
+const expenseOwner = e => String(e.card||"").toUpperCase().startsWith("LG") ? "LG" : "AG";
 function revenueAll(){ return paidInvoices().reduce((t,i)=>t+invTotal(i),0); }
-function expensesAll(){ return sum(store.all("expenses"),"amount"); }
+function expensesAll(){ return sum(bizExpenses(),"amount"); }
 function revenueMonth(){ const k=thisMonthKey();
   return paidInvoices().filter(i=>monthKey(paidOn(i))===k).reduce((t,i)=>t+invTotal(i),0); }
 function expensesMonth(){ const k=thisMonthKey();
-  return sum(store.all("expenses").filter(r=>monthKey(r.date)===k),"amount"); }
+  return sum(bizExpenses().filter(r=>monthKey(r.date)===k),"amount"); }
+
+/* ------- profit split ---------------------------------------------------
+   Each month:  profit = paid invoices − business expenses
+                kept   = profit × retained %        (stays in the account)
+                rest   = profit − kept, shared out invoice by invoice: every
+                         invoice carries its share of the month's profit in
+                         proportion to its amount, then splits by its project's
+                         LG/AG percentages.
+                LG owed = Σ LG shares − personal business expenses on LG's card
+                AG owed = Σ AG shares − personal business expenses on AG's card
+   A month with expenses but no paid invoice is a loss the business absorbs.
+   Logged distributions are what was actually transferred; balance = owed − paid. */
+const DEFAULT_SPLIT_LG = 30;
+function splitLgOf(pr){ const v=Number(pr&&pr.splitLg);
+  return (pr&&pr.splitLg!==""&&pr.splitLg!=null&&isFinite(v)) ? Math.min(100,Math.max(0,v)) : DEFAULT_SPLIT_LG; }
+function retainPct(){ const v=Number(setting("distribution","retainPct",50)); return isFinite(v)?Math.min(100,Math.max(0,v)):50; }
+function retainTarget(){ return Number(setting("distribution","retainTarget",10000))||0; }
+
+function monthSplit(k){
+  const invs=paidInvoices().filter(i=>monthKey(paidOn(i))===k);
+  const revenue=invs.reduce((t,i)=>t+invTotal(i),0);
+  const biz=sum(bizExpenses().filter(e=>monthKey(e.date)===k),"amount");
+  const profit=revenue-biz;
+  const kept=invs.length ? profit*retainPct()/100 : profit;   // no invoice → the business carries it
+  const rest=profit-kept;
+  let lg=0, ag=0;
+  const lines=invs.map(i=>{
+    const gross=invTotal(i), share=revenue>0?gross/revenue:0, net=rest*share;
+    const pr=store.get("projects",i.projectId), sLg=splitLgOf(pr)/100;
+    const l=net*sLg, a=net-l; lg+=l; ag+=a;
+    return {inv:i, project:pr, gross, net, lg:l, ag:a, splitLg:sLg*100};
+  });
+  const pers=personalExpenses().filter(e=>monthKey(e.date)===k);
+  const persLG=sum(pers.filter(e=>expenseOwner(e)==="LG"),"amount");
+  const persAG=sum(pers.filter(e=>expenseOwner(e)==="AG"),"amount");
+  const dist=store.all("distributions").filter(d=>d.period===k);
+  const paidLG=sum(dist.filter(d=>d.partner==="LG"),"amount");
+  const paidAG=sum(dist.filter(d=>d.partner==="AG"),"amount");
+  return {k, invoices:invs, lines, revenue, biz, profit, kept, rest, lgGross:lg, agGross:ag,
+          persLG, persAG, lgOwed:lg-persLG, agOwed:ag-persAG, paidLG, paidAG,
+          lgBalance:lg-persLG-paidLG, agBalance:ag-persAG-paidAG};
+}
+/* every month that has money movement, newest first */
+function splitMonths(){
+  const ks=new Set();
+  paidInvoices().forEach(i=>ks.add(monthKey(paidOn(i))));
+  store.all("expenses").forEach(e=>ks.add(monthKey(e.date)));
+  store.all("distributions").forEach(d=>ks.add(d.period));
+  return [...ks].filter(k=>/^\d{4}-\d{2}$/.test(k)).sort().reverse().map(monthSplit);
+}
+function splitTotals(months){
+  const t={revenue:0,biz:0,profit:0,kept:0,lgGross:0,agGross:0,persLG:0,persAG:0,lgOwed:0,agOwed:0,paidLG:0,paidAG:0,lgBalance:0,agBalance:0};
+  (months||splitMonths()).forEach(m=>Object.keys(t).forEach(x=>t[x]+=m[x]));
+  return t;
+}
+/* what one invoice would hand out on its own, before the month's expenses */
+function invoiceSplit(inv){
+  const pr=store.get("projects",inv.projectId), sLg=splitLgOf(pr)/100;
+  const gross=invTotal(inv), kept=gross*retainPct()/100, rest=gross-kept;
+  return {gross, kept, lg:rest*sLg, ag:rest*(1-sLg), splitLg:sLg*100};
+}
+const signed = v => `<span class="num" style="color:${v<0?"var(--danger)":"inherit"}">${fmtMoney(v)||"$0"}</span>`;
 
 function stageBadge(k){ const s=stageOf(k); return `<span class="badge badge-${s.tone}"><i></i>${esc(s.label)}</span>`; }
 function toneColor(t){ return {violet:"var(--violet)",amber:"var(--amber)",steel:"#8FA8C8",mint:"var(--mint)",gold:"var(--gold)",dim:"var(--surface-3)"}[t]||"var(--surface-3)"; }
@@ -667,6 +777,11 @@ function cellValue(o,rec,key){
     return `<span class="num ${cls}">${fmtMoney(v)}</span>`;
   }
   if(f&&f.type==="date")  return `<span class="num dim">${v?fmtDate(v):"—"}</span>`;
+  if(f&&f.type==="month") return `<span class="num dim">${v?periodLabel(v):"—"}</span>`;
+  if(o==="distributions"&&key==="partner") return `<span class="badge badge-${v==="LG"?"violet":"gold"}"><i></i>${esc(v||"—")}</span>`;
+  if(o==="expenses"&&key==="kind") return v===EXP_PERSONAL
+    ?`<span class="badge badge-amber"><i></i>Personal business</span>`:`<span class="badge badge-steel"><i></i>Business</span>`;
+  if(o==="projects"&&key==="splitLg"){ const l=splitLgOf(rec); return `<span class="num">LG ${l}% · AG ${100-l}%</span>`; }
   if(o==="invoices"&&key==="paid")
     return v?`<span class="badge badge-mint" style="cursor:pointer" title="Click to mark unpaid"
                 onclick="event.stopPropagation();togglePaid('${rec.id}')"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
@@ -684,6 +799,7 @@ function parseHash(){
   const p=h.split("/").filter(Boolean);
   if(!p.length) return {view:"dashboard"};
   if(p[0]==="projections") return {view:"projections"};
+  if(p[0]==="distributions"&&!p[1]) return {view:"distributions",obj:"distributions"};
   if(CONFIG.objects[p[0]]) return p[1]?{view:"detail",obj:p[0],id:p[1]}:{view:"list",obj:p[0]};
   return {view:"dashboard"};
 }
@@ -694,6 +810,7 @@ function render(){
   const warn = "";
   if(route.view==="dashboard") v.innerHTML=warn+viewDashboard();
   else if(route.view==="projections"){ v.innerHTML=warn+viewProjections(); bindChart(); }
+  else if(route.view==="distributions"){ v.innerHTML=warn+viewDistributions(); bindDistControls(); }
   else if(route.view==="list") v.innerHTML=warn+viewList(route.obj);
   else v.innerHTML=warn+viewDetail(route.obj,route.id);
   window.scrollTo(0,0); bindListControls();
@@ -743,6 +860,7 @@ function viewDashboard(){
   const cos=store.all("companies");
   const profit=revenueAll()-expensesAll();
   const revM=revenueMonth(), expM=expensesMonth();
+  const ms=monthSplit(thisMonthKey()), tot=splitTotals();
   const inDev=store.all("projects").filter(p=>p.status==="In development");
   const active=cos.filter(c=>c.stage==="active");
   const mrr=sum(active,"monthlyFee");
@@ -768,10 +886,26 @@ function viewDashboard(){
       <div class="v">${fmtMoney(revM)||"$0"}</div>
       <div class="m">${paidInvoices().filter(i=>monthKey(paidOn(i))===thisMonthKey()).length} invoice${paidInvoices().filter(i=>monthKey(paidOn(i))===thisMonthKey()).length===1?"":"s"} paid</div></div>
     <div class="tile accent-danger"><div class="k">Expenses · ${esc(monthLabel())}</div>
-      <div class="v">${fmtMoney(expM)||"$0"}</div></div>
+      <div class="v">${fmtMoney(expM)||"$0"}</div>
+      ${ms.persLG+ms.persAG?`<div class="m">+ ${fmtMoney(ms.persLG+ms.persAG)} personal business</div>`:""}</div>
     <div class="tile accent-violet"><div class="k">Active clients</div>
       <div class="v">${active.length}</div>
       ${mrr?`<div class="m">${fmtMoney(mrr)}/mo recurring</div>`:""}</div>
+  </div>
+
+  <div class="grid tiles" style="margin-bottom:16px">
+    <div class="tile accent-gold"><div class="k">Business profit · ${esc(monthLabel())}</div>
+      <div class="v">${fmtMoney(ms.kept)||"$0"}</div>
+      <div class="m">${retainPct()}% of profit, kept in the account</div></div>
+    <div class="tile accent-violet"><div class="k">LG profit · ${esc(monthLabel())}</div>
+      <div class="v">${fmtMoney(ms.lgOwed)||"$0"}</div>
+      <div class="m">${fmtMoney(ms.lgGross)||"$0"} share${ms.persLG?" − "+fmtMoney(ms.persLG)+" personal business":""}</div></div>
+    <div class="tile accent-amber"><div class="k">AG profit · ${esc(monthLabel())}</div>
+      <div class="v">${fmtMoney(ms.agOwed)||"$0"}</div>
+      <div class="m">${fmtMoney(ms.agGross)||"$0"} share${ms.persAG?" − "+fmtMoney(ms.persAG)+" personal business":""}</div></div>
+    <div class="tile"><div class="k">Owed · not yet paid out</div>
+      <div class="v">${fmtMoney(tot.lgBalance+tot.agBalance)||"$0"}</div>
+      <div class="m">LG ${fmtMoney(tot.lgBalance)||"$0"} · AG ${fmtMoney(tot.agBalance)||"$0"} · <a href="#/distributions" style="color:var(--text-dim)">Distributions →</a></div></div>
   </div>
 
   <div class="cols">
@@ -820,13 +954,9 @@ function viewDashboard(){
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>This month's money</h3></div>
-        <div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
-          <div style="display:flex"><span style="color:var(--text-dim)">Money in</span><span style="flex:1"></span><span class="num money-in">${fmtMoney(revM)||"$0"}</span></div>
-          <div style="display:flex"><span style="color:var(--text-dim)">Money out</span><span style="flex:1"></span><span class="num money-out">${fmtMoney(expM)||"$0"}</span></div>
-          <div style="display:flex;border-top:1px solid var(--border-soft);padding-top:8px"><span style="color:var(--text-dim)">Net this month</span><span style="flex:1"></span>
-            <span class="num" style="color:${revM-expM>=0?"var(--mint)":"var(--danger)"};font-weight:600">${fmtMoney(revM-expM)||"$0"}</span></div>
-        </div>
+        <div class="card-head"><h3>This month's split</h3><div class="spacer"></div>
+          <a class="btn btn-sm btn-ghost" href="#/distributions">Distributions →</a></div>
+        ${splitRows(ms)}
       </div>
 
       <div class="card">
@@ -843,6 +973,150 @@ function viewDashboard(){
       </div>
     </div>
   </div>`;
+}
+
+/* The waterfall for one month, shared by the dashboard card and the
+   Distributions tab. */
+function splitRows(m){
+  const row=(l,v,opt={})=>`<div style="display:flex;align-items:baseline;gap:8px${opt.top?";border-top:1px solid var(--border-soft);padding-top:8px;margin-top:2px":""}">
+      <span style="color:${opt.strong?"var(--text)":"var(--text-dim)"};${opt.strong?"font-weight:600":""}">${l}</span><span style="flex:1"></span>
+      <span class="num ${opt.cls||""}" style="${opt.strong?"font-weight:600;":""}${opt.color?"color:"+opt.color:""}">${v}</span></div>`;
+  const lg=splitLgLabel(m), r=retainPct();
+  return `<div style="display:flex;flex-direction:column;gap:8px;font-size:13.5px">
+    ${row("Paid invoices", fmtMoney(m.revenue)||"$0", {cls:"money-in"})}
+    ${row("Business expenses", "− "+(fmtMoney(m.biz)||"$0"), {cls:"money-out"})}
+    ${row("Profit", fmtMoney(m.profit)||"$0", {top:true,strong:true,color:m.profit<0?"var(--danger)":"var(--text)"})}
+    ${row(`Business profit · ${r}% kept in the account`, fmtMoney(m.kept)||"$0", {color:"var(--gold)"})}
+    ${row(`LG share · ${lg.lg} of the rest`, fmtMoney(m.lgGross)||"$0", {top:true})}
+    ${m.persLG?row("LG personal business expenses", "− "+fmtMoney(m.persLG), {cls:"money-out"}):""}
+    ${row("LG profit", fmtMoney(m.lgOwed)||"$0", {strong:true,color:"var(--violet)"})}
+    ${row(`AG share · ${lg.ag} of the rest`, fmtMoney(m.agGross)||"$0", {top:true})}
+    ${m.persAG?row("AG personal business expenses", "− "+fmtMoney(m.persAG), {cls:"money-out"}):""}
+    ${row("AG profit", fmtMoney(m.agOwed)||"$0", {strong:true,color:"var(--amber)"})}
+    ${(m.paidLG||m.paidAG)?row("Paid out so far", `LG ${fmtMoney(m.paidLG)||"$0"} · AG ${fmtMoney(m.paidAG)||"$0"}`, {top:true}):""}
+  </div>`;
+}
+/* "30%" when every invoice this month uses the same split, otherwise "mixed" */
+function splitLgLabel(m){
+  const ss=[...new Set(m.lines.map(l=>l.splitLg))];
+  if(ss.length===1) return {lg:ss[0]+"%", ag:(100-ss[0])+"%"};
+  if(!ss.length){ return {lg:DEFAULT_SPLIT_LG+"%", ag:(100-DEFAULT_SPLIT_LG)+"%"}; }
+  return {lg:"mixed split", ag:"mixed split"};
+}
+
+/* ========================= DISTRIBUTIONS ==================================
+   Owed vs paid out, month by month and project by project. The numbers are
+   computed from paid invoices, expenses and each project's split; the log at
+   the bottom is what was actually transferred. */
+function viewDistributions(){
+  const months=splitMonths(), tot=splitTotals(months);
+  const log=store.all("distributions").sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.period||"").localeCompare(a.period||""));
+  const kept=tot.kept, target=retainTarget();
+  /* per project, all time: paid revenue, gross shares, what was logged against it */
+  const byProject={};
+  months.forEach(m=>m.lines.forEach(l=>{
+    const id=l.project?l.project.id:"none";
+    const b=byProject[id]=byProject[id]||{project:l.project,revenue:0,lg:0,ag:0,paidLG:0,paidAG:0,splitLg:l.splitLg};
+    b.revenue+=l.gross; b.lg+=l.lg; b.ag+=l.ag;
+  }));
+  log.forEach(d=>{ const id=d.projectId&&store.get("projects",d.projectId)?d.projectId:"none";
+    const b=byProject[id]=byProject[id]||{project:store.get("projects",id),revenue:0,lg:0,ag:0,paidLG:0,paidAG:0,splitLg:null};
+    if(d.partner==="LG") b.paidLG+=Number(d.amount)||0; else b.paidAG+=Number(d.amount)||0; });
+  const projRows=Object.values(byProject).sort((a,b)=>b.revenue-a.revenue);
+
+  return `
+  <div class="page-head">
+    <div><h2>Distributions</h2>
+      <div class="sub">${retainPct()}% of profit stays in the account${target?` until it holds ${fmtMoney(target)}`:""}; the rest is split per project (LG / AG) and paid out after personal business expenses.</div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="openForm('distributions')">+ Log a transfer</button>
+  </div>
+
+  <div class="grid tiles" style="margin-bottom:14px">
+    <div class="tile accent-violet"><div class="k">Owed to LG</div><div class="v">${fmtMoney(tot.lgBalance)||"$0"}</div>
+      <div class="m">${fmtMoney(tot.lgOwed)||"$0"} earned · ${fmtMoney(tot.paidLG)||"$0"} paid out</div></div>
+    <div class="tile accent-amber"><div class="k">Owed to AG</div><div class="v">${fmtMoney(tot.agBalance)||"$0"}</div>
+      <div class="m">${fmtMoney(tot.agOwed)||"$0"} earned · ${fmtMoney(tot.paidAG)||"$0"} paid out</div></div>
+    <div class="tile accent-gold"><div class="k">Business profit kept</div><div class="v">${fmtMoney(kept)||"$0"}</div>
+      <div class="m">${target?`${Math.min(100,Math.round(Math.max(0,kept)/target*100))}% of the ${fmtMoney(target)} reserve`:"all time"}</div></div>
+    <div class="tile"><div class="k">Settings</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text-dim)">Keep <input id="dsRetain" type="number" min="0" max="100" step="1" value="${retainPct()}" style="width:58px;margin:0 2px">%</label>
+        <label style="font-size:12px;color:var(--text-dim)">until <input id="dsTarget" type="number" min="0" step="100" value="${target}" style="width:92px;margin:0 2px"></label>
+        <button class="btn btn-sm" id="dsSave">Save</button></div>
+      <div class="m">Applies to every month shown.</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-head"><h3>By month</h3><div class="spacer"></div>
+      <span style="font-size:11px;color:var(--text-faint)">${months.length} month${months.length===1?"":"s"}</span></div>
+    ${months.length?`<div class="table-wrap" style="border:0"><table>
+      <thead><tr><th>Month</th><th>Paid invoices</th><th>Business exp.</th><th>Profit</th><th>Kept</th><th>LG owed</th><th>AG owed</th><th>Paid LG</th><th>Paid AG</th><th>Balance</th></tr></thead>
+      <tbody>${months.map(m=>`<tr>
+        <td><span class="strong">${esc(periodLabel(m.k))}</span></td>
+        <td><span class="num money-in">${fmtMoney(m.revenue)||"$0"}</span></td>
+        <td><span class="num money-out">${fmtMoney(m.biz)||"$0"}</span></td>
+        <td>${signed(m.profit)}</td>
+        <td><span class="num" style="color:var(--gold)">${fmtMoney(m.kept)||"$0"}</span></td>
+        <td><span class="num" style="color:var(--violet)">${fmtMoney(m.lgOwed)||"$0"}</span>${m.persLG?`<div class="dim" style="font-size:11px">after −${fmtMoney(m.persLG)}</div>`:""}</td>
+        <td><span class="num" style="color:var(--amber)">${fmtMoney(m.agOwed)||"$0"}</span>${m.persAG?`<div class="dim" style="font-size:11px">after −${fmtMoney(m.persAG)}</div>`:""}</td>
+        <td><span class="num">${fmtMoney(m.paidLG)||"—"}</span></td>
+        <td><span class="num">${fmtMoney(m.paidAG)||"—"}</span></td>
+        <td>${signed(m.lgBalance+m.agBalance)}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>All time</td>
+        <td><span class="num money-in">${fmtMoney(tot.revenue)||"$0"}</span></td>
+        <td><span class="num money-out">${fmtMoney(tot.biz)||"$0"}</span></td>
+        <td>${signed(tot.profit)}</td><td><span class="num">${fmtMoney(tot.kept)||"$0"}</span></td>
+        <td><span class="num">${fmtMoney(tot.lgOwed)||"$0"}</span></td><td><span class="num">${fmtMoney(tot.agOwed)||"$0"}</span></td>
+        <td><span class="num">${fmtMoney(tot.paidLG)||"$0"}</span></td><td><span class="num">${fmtMoney(tot.paidAG)||"$0"}</span></td>
+        <td>${signed(tot.lgBalance+tot.agBalance)}</td></tr></tfoot>
+    </table></div>`:`<div class="empty-line">No paid invoices or expenses yet.</div>`}
+  </div>
+
+  <div class="cols" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-head"><h3>By project</h3><div class="spacer"></div>
+        <span style="font-size:11px;color:var(--text-faint)">shares after business expenses, before personal</span></div>
+      ${projRows.length?`<div class="table-wrap" style="border:0"><table>
+        <thead><tr><th>Project</th><th>Split</th><th>Paid revenue</th><th>LG share</th><th>AG share</th><th>Paid out</th></tr></thead>
+        <tbody>${projRows.map(b=>`<tr ${b.project?`onclick="go('#/projects/${b.project.id}')"`:""}>
+          <td><span class="strong">${b.project?esc(b.project.name):"(no project)"}</span></td>
+          <td><span class="num dim">${b.project?`${splitLgOf(b.project)} / ${100-splitLgOf(b.project)}`:"—"}</span></td>
+          <td><span class="num money-in">${fmtMoney(b.revenue)||"$0"}</span></td>
+          <td><span class="num" style="color:var(--violet)">${fmtMoney(b.lg)||"$0"}</span></td>
+          <td><span class="num" style="color:var(--amber)">${fmtMoney(b.ag)||"$0"}</span></td>
+          <td><span class="num dim">LG ${fmtMoney(b.paidLG)||"$0"} · AG ${fmtMoney(b.paidAG)||"$0"}</span></td></tr>`).join("")}</tbody>
+      </table></div>`:`<div class="empty-line">Nothing paid yet.</div>`}
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>${esc(monthLabel())}</h3></div>
+      ${splitRows(monthSplit(thisMonthKey()))}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Transfers logged</h3><div class="spacer"></div>
+      <span style="font-size:11px;color:var(--text-faint)">${log.length}</span>
+      <button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openForm('distributions')">+ Log</button></div>
+    ${log.length?`<div class="table-wrap" style="border:0"><table>
+      <thead><tr><th>Date</th><th>Paid to</th><th>Covers</th><th>Project</th><th>Amount</th><th>Notes</th></tr></thead>
+      <tbody>${log.map(d=>`<tr onclick="go('#/distributions/${d.id}')">
+        <td>${cellValue("distributions",d,"date")}</td><td>${cellValue("distributions",d,"partner")}</td>
+        <td>${cellValue("distributions",d,"period")}</td><td>${cellValue("distributions",d,"projectId")}</td>
+        <td><span class="num money-out">${fmtMoney(d.amount)}</span></td><td><span class="dim">${esc(d.notes||"")}</span></td></tr>`).join("")}</tbody>
+    </table></div>`:`<div class="empty-line">Nothing paid out yet. When money is transferred to LG or AG, log it here so the balances above come down.</div>`}
+  </div>`;
+}
+function bindDistControls(){
+  const b=$("#dsSave"); if(!b) return;
+  b.onclick=async ()=>{
+    const retainPct=Math.min(100,Math.max(0,Number($("#dsRetain").value)||0));
+    const retainTarget=Math.max(0,Number($("#dsTarget").value)||0);
+    b.disabled=true; b.textContent="Saving…";
+    const r=await saveSetting("distribution",{retainPct,retainTarget});
+    b.disabled=false; b.textContent="Save";
+    if(r){ toast("Settings saved","ok"); render(); }
+  };
 }
 
 /* ========================= PROJECTIONS =====================================
@@ -1305,17 +1579,18 @@ function previewInvoice(id){
 
 /* ============================ LIST ======================================== */
 const DEFAULT_SORT={ companies:{sort:"stage",dir:-1},   // furthest along on top
-                     expenses:{sort:"date",dir:-1},
+                     expenses:{sort:"date",dir:-1}, distributions:{sort:"date",dir:-1},
                      invoices:{sort:"date",dir:-1},
                      activities:{sort:"date",dir:-1}, projects:{sort:"dueDate",dir:1} };
 function viewList(o){
   const d=objDef(o);
-  const st=listState[o]=listState[o]||{q:"",stage:"",industry:"",paid:"",...(DEFAULT_SORT[o]||{sort:d.listColumns[0],dir:1})};
+  const st=listState[o]=listState[o]||{q:"",stage:"",industry:"",paid:"",kind:"",...(DEFAULT_SORT[o]||{sort:d.listColumns[0],dir:1})};
   let rows=store.all(o);
   if(st.q){ const q=st.q.toLowerCase(); rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); }
   if(st.stage) rows=rows.filter(r=>r.stage===st.stage);
   if(st.industry) rows=rows.filter(r=>r.industry===st.industry);
   if(o==="invoices"&&st.paid) rows=rows.filter(r=>st.paid==="paid"?!!r.paid:!r.paid);
+  if(o==="expenses"&&st.kind) rows=rows.filter(r=>expKind(r)===st.kind);
 
   const sortVal=(r,k)=>{
     const f=d.fields.find(f=>f.key===k);
@@ -1343,12 +1618,12 @@ function viewList(o){
   /* money tabs get running totals in the header + a footer total row */
   let totalsHtml="";
   if(o==="expenses"){
-    const shown=sum(rows,"amount");
+    const k=thisMonthKey(), pers=personalExpenses(), persM=pers.filter(e=>monthKey(e.date)===k);
     totalsHtml=`<div class="grid tiles" style="margin-bottom:14px">
-      <div class="tile accent-danger"><div class="k">Total · all time</div><div class="v">${fmtMoney(expensesAll())||"$0"}</div><div class="m">${store.all(o).length} expenses</div></div>
-      <div class="tile accent-amber"><div class="k">This month</div><div class="v">${fmtMoney(expensesMonth())||"$0"}</div><div class="m">${esc(monthLabel())}</div></div>
-      <div class="tile accent-violet"><div class="k">Renews monthly</div><div class="v">${fmtMoney(sum(store.all(o).filter(e=>e.renewal==="Monthly"),"amount"))||"$0"}</div></div>
-      <div class="tile"><div class="k">Renews yearly</div><div class="v">${fmtMoney(sum(store.all(o).filter(e=>e.renewal==="Yearly"),"amount"))||"$0"}</div></div>
+      <div class="tile accent-danger"><div class="k">Business · all time</div><div class="v">${fmtMoney(expensesAll())||"$0"}</div><div class="m">${bizExpenses().length} on the LG Aflowgent VISA · reduces profit</div></div>
+      <div class="tile accent-amber"><div class="k">Business · ${esc(monthLabel())}</div><div class="v">${fmtMoney(expensesMonth())||"$0"}</div><div class="m">${fmtMoney(sum(bizExpenses().filter(e=>e.renewal==="Monthly"),"amount"))||"$0"} renews monthly</div></div>
+      <div class="tile accent-violet"><div class="k">Personal business · ${esc(monthLabel())}</div><div class="v">${fmtMoney(sum(persM,"amount"))||"$0"}</div><div class="m">AG ${fmtMoney(sum(persM.filter(e=>expenseOwner(e)==="AG"),"amount"))||"$0"} · LG ${fmtMoney(sum(persM.filter(e=>expenseOwner(e)==="LG"),"amount"))||"$0"} · comes out of distributions</div></div>
+      <div class="tile"><div class="k">Personal business · all time</div><div class="v">${fmtMoney(sum(pers,"amount"))||"$0"}</div><div class="m">${pers.length} on the AG Aflowgent VISA</div></div>
     </div>`;
   }
   if(o==="revenue"){
@@ -1374,7 +1649,7 @@ function viewList(o){
       <div class="tile"><div class="k">Billed · all time</div><div class="v">${fmtMoney(sumInv(all))||"$0"}</div><div class="m">${all.length} invoice${all.length===1?"":"s"}</div></div>
     </div>`;
   }
-  const showFoot=(o==="expenses"||o==="revenue"||o==="invoices")&&rows.length;
+  const showFoot=(o==="expenses"||o==="revenue"||o==="invoices"||o==="distributions")&&rows.length;
   const amountIdx=cols.indexOf("amount");
 
   return `
@@ -1390,6 +1665,11 @@ function viewList(o){
     <input id="lq" type="text" placeholder="Filter ${esc(d.plural.toLowerCase())}…" value="${esc(st.q)}">
     ${hasStage?`<select id="lstage"><option value="">All stages</option>
       ${CONFIG.stages.map(s=>`<option value="${s.key}" ${st.stage===s.key?"selected":""}>${esc(s.label)}</option>`).join("")}
+    </select>`:""}
+    ${o==="expenses"?`<select id="lkind">
+      <option value="">Business & personal</option>
+      <option value="${EXP_BUSINESS}" ${st.kind===EXP_BUSINESS?"selected":""}>Business only</option>
+      <option value="${EXP_PERSONAL}" ${st.kind===EXP_PERSONAL?"selected":""}>Personal business only</option>
     </select>`:""}
     ${o==="invoices"?`<select id="lpaid">
       <option value="">Paid & unpaid</option>
@@ -1437,6 +1717,8 @@ function bindListControls(){
   if(ind) ind.onchange=()=>{ listState[route.obj].industry=ind.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
   const pd=$("#lpaid");
   if(pd) pd.onchange=()=>{ listState[route.obj].paid=pd.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
+  const kd=$("#lkind");
+  if(kd) kd.onchange=()=>{ listState[route.obj].kind=kd.value; $("#view").innerHTML=viewList(route.obj); bindListControls(); };
   document.querySelectorAll("th[data-sort]").forEach(th=>{
     th.onclick=()=>{ const k=th.dataset.sort, st=listState[route.obj];
       if(st.sort===k) st.dir*=-1; else {st.sort=k;st.dir=1;}
@@ -1467,10 +1749,21 @@ function viewDetail(o,id){
     related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
   } else if(o==="projects"){
     const co=store.get("companies",rec.companyId);
-    related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
+    const invs=store.all("invoices").filter(i=>i.projectId===id);
+    const dists=store.all("distributions").filter(d=>d.projectId===id);
+    const addI=`<button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="openForm('invoices','',{companyId:'${rec.companyId||""}',projectId:'${id}'})">+ New</button>`;
+    related=(co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"")
+      +relCard("Billing",invs,"invoices",i=>{ const sp=invoiceSplit(i);
+          return `${fmtMoney(invTotal(i))} · ${i.paid?"paid"+(i.paidDate?" "+fmtDate(i.paidDate):""):"unpaid"} · LG ${fmtMoney(sp.lg)} / AG ${fmtMoney(sp.ag)}`; },addI)
+      +relCard("Distributions",dists,"distributions",d=>d.notes||"");
   } else if(o==="revenue"||o==="expenses"||o==="invoices"){
     const co=store.get("companies",rec.companyId);
     related=co?relCard("Company",[co],"companies",c=>stageOf(c.stage).label):"";
+    if(o==="invoices"){ const pr=store.get("projects",rec.projectId);
+      if(pr) related+=relCard("Project",[pr],"projects",p=>`${p.status||""} · split LG ${splitLgOf(p)} / AG ${100-splitLgOf(p)}`); }
+  } else if(o==="distributions"){
+    const pr=store.get("projects",rec.projectId);
+    related=pr?relCard("Project",[pr],"projects",p=>p.status||""):"";
   } else if(o==="activities"){
     const links=[["companies",rec.relCompanyId],["projects",rec.relProjectId]]
       .map(([t,rid])=>store.get(t,rid)?{t,rec:store.get(t,rid)}:null).filter(Boolean);
@@ -1485,7 +1778,12 @@ function viewDetail(o,id){
 
   const metaCells=[];
   if(d.fields.some(f=>f.stage)) metaCells.push(`<div><div class="k">Stage</div>${stageBadge(rec.stage)}</div>`);
-  if(o==="projects") metaCells.push(`<div><div class="k">Status</div><div>${esc(rec.status||"—")}</div></div>`);
+  if(o==="projects"){ metaCells.push(`<div><div class="k">Status</div><div>${esc(rec.status||"—")}</div></div>`);
+    metaCells.push(`<div><div class="k">Distribution split</div><div class="num">LG ${splitLgOf(rec)}% · AG ${100-splitLgOf(rec)}%</div></div>`); }
+  if(o==="invoices"){ const sp=invoiceSplit(rec), pr=store.get("projects",rec.projectId);
+    metaCells.push(`<div><div class="k">Split${rec.paid?"":" when paid"}</div><div class="num" style="font-size:12.5px">
+      <span style="color:var(--gold)">kept ${fmtMoney(sp.kept)}</span> · <span style="color:var(--violet)">LG ${fmtMoney(sp.lg)}</span> · <span style="color:var(--amber)">AG ${fmtMoney(sp.ag)}</span>
+      <div class="dim" style="font-size:11px">${sp.splitLg}/${100-sp.splitLg} from ${pr?esc(pr.name):"project"} · before the month's expenses</div></div></div>`); }
   if(o==="invoices") metaCells.push(`<div><div class="k">Status</div><div>${rec.paid
     ?`<span class="badge badge-mint"><i></i>Paid${rec.paidDate?" · "+fmtDate(rec.paidDate):""}</span>`
     :`<span class="badge badge-amber"><i></i>Unpaid${rec.dueDate&&rec.dueDate<todayISO()?" · past due":""}</span>`}</div></div>`);
@@ -1588,7 +1886,7 @@ function fieldHtml(o,f,val){
   } else if(f.type==="bool"){
     input=`<select data-k="${f.key}"><option value="">No</option><option value="1" ${val?"selected":""}>Yes</option></select>`;
   } else {
-    const t=f.type==="date"?"date":f.type==="money"||f.type==="number"?"number":f.type==="email"?"email":"text";
+    const t=f.type==="date"?"date":f.type==="month"?"month":f.type==="money"||f.type==="number"?"number":f.type==="email"?"email":"text";
     const step=f.type==="money"?' step="0.01" min="0"':"";
     input=`<input data-k="${f.key}" type="${t}"${step}${f.hint?` placeholder="${esc(f.hint)}"`:""} value="${esc(val==null?"":val)}">`;
   }
@@ -1605,6 +1903,9 @@ function openForm(o,id,preset){
     if(!rec.dueDate) rec.dueDate=rec.date;            // the Litili invoice was due on receipt
     if(!rec.method)  rec.method="Zelle";
   }
+  if(o==="projects"&&!id&&(rec.splitLg===undefined||rec.splitLg==="")) rec.splitLg=DEFAULT_SPLIT_LG;
+  if(o==="expenses"&&!id){ if(!rec.kind) rec.kind=EXP_BUSINESS; if(!rec.card) rec.card=CONFIG.lists.cards[0]; }
+  if(o==="distributions"&&!id&&!rec.period) rec.period=monthKey(rec.date);
   $("#modalRoot").innerHTML=`
   <div class="overlay" onclick="if(event.target===this)closeModal()">
     <div class="modal">
@@ -1658,6 +1959,8 @@ async function saveForm(o,id){
   });
   if(!ok){ toast("Fill the required fields","warn"); return; }
   if(o==="invoices") applyInvoiceDefaults(patch, id);
+  if(o==="expenses"&&!patch.card) patch.card = patch.kind===EXP_PERSONAL ? CONFIG.lists.cards[1] : CONFIG.lists.cards[0];
+  if(o==="projects"&&(patch.splitLg===""||patch.splitLg==null)) patch.splitLg=DEFAULT_SPLIT_LG;
   const btn=document.querySelector(".modal-foot .btn-primary");
   if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
   if(id){
@@ -1668,7 +1971,7 @@ async function saveForm(o,id){
     const r=await store.create(o,patch);
     if(!r){ if(btn){btn.disabled=false;btn.textContent="Add it";} return; }
     toast(objDef(o).label+" added","ok"); closeModal();
-    if(o==="expenses"||o==="activities") render();
+    if(o==="expenses"||o==="activities"||o==="distributions") render();
     else { go(`#/${o}/${r.id}`); render(); }
   }
 }
