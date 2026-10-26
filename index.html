@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aflowgent — Custom AI automation built around your business</title>
-<meta name="description" content="Custom CRM databases, role-based dashboards, connected-system automation, and targeted outreach, built around the workflows and programs your business already runs on.">
+<meta name="description" content="Sales enablement and AI automation: custom CRM databases, role-based dashboards, connected-system automation, and targeted outreach, built on the workflows and programs your business already runs on.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -195,6 +195,15 @@ html,body{overflow-x:clip}
 @media(max-width:560px){.fits-grid{grid-template-columns:1fr}}
 .fit{font-size:14.5px;color:var(--muted);padding-left:16px;border-left:2px solid var(--line-2)}
 .fit strong{display:block;color:var(--text);font-weight:600;margin-bottom:4px}
+
+/* ---------- why us ---------- */
+.diffs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
+@media(max-width:980px){.diffs{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.diffs{grid-template-columns:1fr}}
+.diff{border:1px solid var(--line);border-radius:var(--r);padding:24px 24px 24px;background:var(--ink-2)}
+.diff b{display:block;font-family:var(--display);font-size:19px;font-weight:700;line-height:1.25;margin-bottom:8px;color:var(--text)}
+.diff span{display:block;color:var(--muted);font-size:14.5px}
+.diff i{display:block;width:26px;height:3px;border-radius:999px;margin-bottom:16px;font-style:normal}
 
 /* ---------- lanes ---------- */
 .lanes{margin-top:50px;display:grid;gap:18px}
@@ -459,6 +468,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
     <div class="nav-links">
       <a href="#work">Capabilities</a>
       <a href="#projects">Recent work</a>
+      <a href="#why">Why us</a>
       <a href="#process">Process</a>
       <a href="#pricing">Pricing</a>
     </div>
@@ -471,7 +481,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 <header id="top" class="band hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow">AI operations studio</span>
+      <span class="eyebrow">Sales enablement &amp; AI operations</span>
       <h1 data-split>Systems built around how <em class="acc">you already work.</em></h1>
       <p class="lede" style="margin-top:26px">
         We design and run intelligent systems that work your pipeline and act on your
@@ -537,8 +547,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
       <span class="eyebrow">What we build</span>
       <h2 data-split>Not shortcuts.<br>A second workforce.</h2>
       <p class="lede" style="margin-top:24px">
-        The systems we're building for clients right now, designed around each operation
-        and run as a managed service.
+        Most of our work helps sales and marketing teams know who to contact, what to say,
+        and what happened next. These are the systems we're building for clients right now,
+        designed around each operation and run as a managed service.
       </p>
     </div>
 
@@ -616,7 +627,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
   <div class="wrap">
     <div class="rv">
       <span class="eyebrow">Same job, measured</span>
-      <h2 data-split>One request, start to finish.</h2>
+      <h2 data-split>One quiet account, start to finish.</h2>
     </div>
 
     <div class="lanes">
@@ -633,8 +644,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
           <div class="seg" style="flex:4;background:#2A3348;animation-delay:.85s"></div>
         </div>
         <div class="steps">
-          <span>read the request</span><span>wait for someone free</span>
-          <span>retype into the system</span><span>wait again</span><span>reply</span>
+          <span>pull a report</span><span>guess who's worth a call</span>
+          <span>write the email from scratch</span><span>forget to log it</span><span>lose track of the reply</span>
         </div>
       </div>
 
@@ -651,8 +662,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
           <div class="seg" style="flex:2;background:#3FDDA0;animation-delay:.58s"></div>
         </div>
         <div class="steps">
-          <span>request arrives</span><span>understood &amp; extracted</span>
-          <span>systems updated</span><span>response drafted</span><span>you approve</span>
+          <span>account surfaces in the rep's queue</span><span>email drafted in your voice</span>
+          <span>you approve</span><span>reply logged to the record</span><span>opportunity tracked</span>
         </div>
       </div>
     </div>
@@ -694,7 +705,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
         <ul>
           <li><span>Matched 1,000+ reservations against both lists to find 951 guests with a confirmed visit.</span></li>
           <li><span>Manager emails sent from the general manager's real mailbox in small daily batches, using approved templates for each offer.</span></li>
-          <li><span>A scoreboard of sent, scheduled, replied, and unsubscribed, with VIPs added as they're emailed.</span></li>
+          <li><span>The mailbox is checked every 15 minutes, so every delivery, reply, bounce, and opt-out lands on the dashboard without anyone typing it in.</span></li>
           <li><span>Visit-history uploads that remove duplicates and add new guests as contacts on their own.</span></li>
         </ul>
       </article>
@@ -720,6 +731,30 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
         <div class="fit"><strong>Reports built by hand</strong>Leadership asking for numbers someone rebuilds in a spreadsheet every week.</div>
         <div class="fit"><strong>Systems that don't talk</strong>A CRM, reservations, inbox, and spreadsheets that should tell one story.</div>
       </div>
+    </div>
+  </div>
+
+  <div class="pipe" aria-hidden="true"></div>
+</section>
+
+<!-- ========== WHY US ========== -->
+<section id="why" class="band" style="padding-top:0">
+  <div class="wrap">
+    <div class="rv">
+      <span class="eyebrow">Why Aflowgent</span>
+      <h2 data-split>Plenty of people sell AI automation. Here's how we work.</h2>
+      <p class="lede" style="margin-top:24px">
+        Every point below comes from projects we're running right now, not from a pitch deck.
+      </p>
+    </div>
+
+    <div class="diffs persp">
+      <div class="diff rv-flip"><i style="background:var(--running)"></i><b>Built on your systems, not ours.</b><span>We work inside the tools you already pay for, from Salesforce to Outlook to your reservation system. No new platform to adopt and no seats to buy.</span></div>
+      <div class="diff rv-flip rv-d1"><i style="background:var(--queued)"></i><b>Your numbers match ours.</b><span>Before we publish a dashboard, we reconcile it to the definitions your leadership already uses, so nobody argues about whose count is right.</span></div>
+      <div class="diff rv-flip rv-d2"><i style="background:var(--done)"></i><b>Replies and revenue, not opens.</b><span>We measure the replies, meetings, and opportunities that follow outreach, tracked back to each record. Open rates are easy to inflate; replies aren't.</span></div>
+      <div class="diff rv-flip"><i style="background:var(--done)"></i><b>A person approves what goes out.</b><span>Every message version is approved before it sends, from your real mailbox, in your voice. You decide when, or whether, that ever changes.</span></div>
+      <div class="diff rv-flip rv-d1"><i style="background:var(--running)"></i><b>You work with the builder.</b><span>The person who maps your workflow is the person who writes the code. No account managers, no handoffs, nothing lost in translation.</span></div>
+      <div class="diff rv-flip rv-d2"><i style="background:var(--queued)"></i><b>You own all of it.</b><span>The database, the dashboards, and the automations are yours. No lock-in, no platform you have to keep renting to keep your data.</span></div>
     </div>
   </div>
 
