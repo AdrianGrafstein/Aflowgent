@@ -77,6 +77,10 @@ em.acc{font-style:italic;color:var(--running)}
 .brand{display:flex;align-items:center;gap:11px;font-family:var(--display);
   font-weight:700;font-size:21px;letter-spacing:-.01em;text-decoration:none}
 .brand-mark{width:24px;height:24px;flex:none}
+/* logo image carries ~10% transparent ring padding on each side; pull it left so the A sits on the content edge */
+.brand-logo{display:block;height:48px;width:auto;margin-left:-21px;opacity:.96;transition:opacity .18s}
+.brand:hover .brand-logo{opacity:1}
+@media(max-width:520px){.brand-logo{height:40px;margin-left:-18px}}
 .nav-links{display:flex;gap:28px;margin-left:auto}
 .nav-links a{font-size:14.5px;color:var(--muted);text-decoration:none;transition:color .18s}
 .nav-links a:hover{color:var(--text)}
@@ -423,14 +427,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
 
 <nav class="nav">
   <div class="nav-in">
-    <a class="brand" href="#top">
-      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="4.5" cy="12" r="2.6" fill="#8B7BFF"/>
-        <circle cx="12" cy="12" r="2.6" fill="#F5A524"/>
-        <circle cx="19.5" cy="12" r="2.6" fill="#3FDDA0"/>
-        <path d="M7.1 12h2.3M14.6 12h2.3" stroke="#273350" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>
-      Aflowgent
+    <a class="brand" href="#top" aria-label="Aflowgent — home">
+      <img class="brand-logo" src="aflowgent-logo-nav.svg" alt="Aflowgent" width="192" height="48">
     </a>
     <div class="nav-links">
       <a href="#work">Capabilities</a>
